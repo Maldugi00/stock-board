@@ -45,6 +45,15 @@ jobs:
           KIS_ACCOUNT_PRD: ${{ secrets.KIS_ACCOUNT_PRD }}
           DATA_DIR: data
         run: python3 scripts/trade.py run
+      - name: 모의계좌 (계획·주문·수익률)
+        continue-on-error: true
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          KIS_ACCOUNT_NO: ${{ secrets.KIS_ACCOUNT_NO }}
+          KIS_ACCOUNT_PRD: ${{ secrets.KIS_ACCOUNT_PRD }}
+          DATA_DIR: data
+        run: python3 scripts/trade.py
       - name: 데이터 가지에 저장 (기록을 쌓지 않고 최신 한 벌만 둔다)
         env:
           GH_TOKEN: ${{ github.token }}
