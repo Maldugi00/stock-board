@@ -1,6 +1,6 @@
 name: 모의계좌
 
-# 모의투자 계좌 전용. 직접 실행할 때만 돈다. 지금은 잔고 조회만 한다(주문 없음).
+# 모의투자 계좌 잔고 조회 시험. 직접 실행할 때만 돈다(주문 없음). 자동 주문은 '데이터 수집' 안에서 돈다.
 on:
   workflow_dispatch:
 
@@ -30,4 +30,4 @@ jobs:
           KIS_ACCOUNT_NO: ${{ secrets.KIS_ACCOUNT_NO }}
           KIS_ACCOUNT_PRD: ${{ secrets.KIS_ACCOUNT_PRD }}
           DATA_DIR: data
-        run: python3 scripts/trade.py
+        run: python3 scripts/trade.py balance

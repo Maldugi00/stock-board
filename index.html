@@ -329,7 +329,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.6</div>
+    <div class="ver mono">v1.7</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -369,6 +369,11 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
   <section aria-labelledby="h-book">
     <div class="sec-head"><h2 id="h-book">신호 기록장</h2><span class="eyebrow">가상 1,000만원</span></div>
     <div class="panel brief" id="book"></div>
+  </section>
+
+  <section aria-labelledby="h-trade">
+    <div class="sec-head"><h2 id="h-trade">모의계좌</h2><span class="eyebrow" id="trade-at">한투 모의투자</span></div>
+    <div class="panel brief" id="trade"></div>
   </section>
 
   <section aria-labelledby="h-watch">
@@ -462,7 +467,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
   </div>
 
   <footer>
-    시세·뉴스 제목·전문가 의견은 한국투자증권 Open API에서 받은 것이고, 신호는 정해진 규칙(일봉 기준)의 계산 결과입니다. 조회 전용이며 주문 기능은 없습니다. 투자 판단과 책임은 본인에게 있고, 수익을 보장하지 않습니다.
+    시세·뉴스 제목·전문가 의견은 한국투자증권 Open API에서 받은 것이고, 신호는 정해진 규칙(일봉 기준)의 계산 결과입니다. 이 사이트에는 주문 기능이 없고, 자동 주문은 모의투자 계좌(가짜 돈)에서만 이루어집니다. 투자 판단과 책임은 본인에게 있고, 수익을 보장하지 않습니다.
   </footer>
 </div>
 <div id="toast" role="status"></div>
@@ -488,7 +493,7 @@ var ETF_NOTE = '레버리지 ETF는 지수의 하루 수익률을 2배로 따라
 var PHASES = ['차트 읽기','시장 확인','교차 점검','위험 계산','재확인','결론'], PH=[0,1,2,2,3,3,4,5];
 var COLORS = ['#6288bd','#b3775a','#56a595','#bf9a5a','#8a7fb5','#5f9aa8','#a9797f','#7f8a99'];
 var SEMI = {'005930':1,'000660':1,'494310':1};          // 반도체 섹터와 직결되는 종목
-var STOCKS = [], ALL = [], MARKET = null, SECTORS = null, META = null, BOARD = null, FINP = {}, MKTOK = null, BRIEF = null;
+var STOCKS = [], ALL = [], MARKET = null, SECTORS = null, META = null, BOARD = null, FINP = {}, MKTOK = null, BRIEF = null, TRADE = null;
 var state = {i:0, tf:30, step:0, focus:'core', tab:'judge', sect:0, top:-1, edit:false, page:'a', side:false, t0:performance.now(), stepAt:performance.now(), m:0, spin:0, last:performance.now()};
 
 function getJSON(p){ return fetch(DATA+p+'?t='+Math.floor(Date.now()/60000), {cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error(p+' '+r.status); return r.json(); }); }
@@ -625,7 +630,7 @@ function renderMarket(){
   var a=two[0].pct>=0, b=two[1].pct>=0, wide=two[0].up+two[0].down ? two[0].up/(two[0].up+two[0].down) : 0.5;
   $('r-mkt').innerHTML='<b>읽는 법</b> '+(a&&!b?'코스피는 오르고 코스닥은 내려요. 대형주로 돈이 몰리는 날입니다.':(!a&&b?'코스닥만 오르는 날이에요. 중소형주 쪽으로 돈이 움직입니다.':(a?'두 지수가 함께 올라 시장 전체가 강한 날이에요.':'두 지수가 함께 내려 시장 전체가 약한 날이에요.')))+
     ' 코스피에서 오른 종목은 전체의 '+(wide*100).toFixed(0)+'%예요. 점선은 어제 종가입니다.';
-  drawMarket(); renderBrief(); renderBook();
+  drawMarket(); renderBrief(); renderBook(); renderTrade();
 }
 /* ── 신호 기록장: 가상 자금을 내 종목에 똑같이 나눠, 고른 방식의 신호대로만 사고판다 (주문은 하지 않는다) ── */
 var BOOK_CAP=10000000, BOOK=null;
@@ -684,6 +689,28 @@ function drawBook(){
   [[b,C.muted,1.1],[e,C.core,1.7]].forEach(function(t){ g.strokeStyle=t[1]; g.lineWidth=t[2]; g.beginPath(); t[0].forEach(function(v,i){ i?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v)); }); g.stroke(); });
   g.lineWidth=1; g.textAlign='left'; var ye=Y(e[n-1]), yb=Y(b[n-1]); if (Math.abs(ye-yb)<12){ if (ye<=yb) yb=ye+12; else ye=yb+12; }
   g.fillStyle=C.core; g.fillText(pc(e[n-1]), W+6, Math.max(7,Math.min(c.H-7,ye))); g.fillStyle=C.muted; g.fillText(pc(b[n-1]), W+6, Math.max(7,Math.min(c.H-7,yb)));
+}
+/* ── 모의계좌: 한국투자증권 모의투자 계좌에서 실제로 돈 주문의 결과 (수익률만 공개) ── */
+function renderTrade(){
+  var el=$('trade'); if (!el) return;
+  if (!TRADE){ el.innerHTML='<p class="hint" style="margin:0">모의계좌 기록이 아직 없어요. 다음 수집 때 만들어집니다.</p>'; return; }
+  var T=TRADE, sp=function(v){ return (v==null)?'–':'<span class="'+(v>=0?'up':'down')+'">'+pc(v)+'</span>'; }, md=function(d){ return String(d).slice(2).replace(/-/g,'.'); };
+  var SIDE={buy:'매수',sell:'매도'}, STAT={sent:'주문 넣음',filled:'체결',skip:'건너뜀',failed:'실패'};
+  var mode=T.paused?'꺼짐':(T.live?'모의 주문 켜짐':'연습 모드'), held=T.slots.filter(function(x){ return x.state==='보유'; }).length, plans=T.slots.filter(function(x){ return x.plan; });
+  var rows=T.slots.map(function(x){ var note = x.order ? '오늘 '+SIDE[x.order.side]+' '+(STAT[x.order.status]||'') : x.plan ? '다음 거래일 '+SIDE[x.plan.side]+' 예정' : x.blocked ? '매수 조건 충족 · 시장 약세로 보류' : '';
+    return '<tr><th>'+esc(x.name)+(note?'<i>'+esc(note)+'</i>':'')+'</th><td>'+x.state+'</td><td>'+(x.pos!=null?sp(x.pos):'–')+'</td><td>'+sp(x.ret)+'</td></tr>'; }).join('');
+  var logs=(T.log||[]).slice(0,6).map(function(e){ return '<li><span class="'+(/매수/.test(e.act)?'up':(/매도/.test(e.act)?'down':''))+'">'+esc(e.act)+'</span> '+esc(e.name)+(e.px?' · '+fmt(e.px)+'원':'')+'<i>'+md(e.d)+' '+esc(e.t||'')+' · '+esc(e.why||'')+(e.ret!=null?' · '+pc(e.ret):'')+(e.note?' · '+esc(e.note):'')+'</i></li>'; }).join('');
+  var txt='한국투자증권 모의투자 계좌에 실제로 주문을 넣은 결과예요. 가짜 돈이라 실제 손익은 없습니다. '+
+    '장 마감 뒤 확정된 일봉으로 신호를 계산하고, 다음 거래일 장이 열리면 시장가로 주문합니다. 종목당 250만원 이하, 하루 한 번만 넣어요. '+
+    (held||plans.length||(T.log||[]).length ? '' : md(T.start)+'에 시작했고 아직 매수 신호가 없어 전부 현금이에요. ')+
+    '수량과 금액은 공개하지 않고 수익률만 보여줍니다. 신호 기록장과 숫자가 조금 다를 수 있는데, 체결 시각과 가격이 다르기 때문이에요.';
+  el.innerHTML='<dl class="kv" style="margin-top:0"><div><dt>수익률 (1,000만원 기준)</dt><dd>'+sp(T.ret)+'</dd></div><div><dt>상태</dt><dd style="font-family:var(--font-body);font-size:14px">'+mode+'</dd></div>'+
+    '<div><dt>시작 · 방식</dt><dd style="font-family:var(--font-body);font-size:14px">'+md(T.start)+' · '+(T.mode==='trend'?'추세형':'방어형')+'</dd></div><div><dt>보유 / 예정 주문</dt><dd>'+held+'종목 / '+plans.length+'건</dd></div></dl>'+
+    '<table class="sc bk"><thead><tr><th></th><th>상태</th><th>보유분 손익</th><th>누적</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+    (logs?'<div class="bn" style="margin-top:12px"><b>최근 기록</b><ul class="tl">'+logs+'</ul></div>':'')+
+    ((T.errors||[]).length?'<p class="hint" style="margin:10px 0 0;color:var(--amber)">최근 오류: '+esc(T.errors[T.errors.length-1])+'</p>':'')+
+    '<p class="read" style="--c:var(--teal)"><b>읽는 법</b> '+txt+'</p>';
+  $('trade-at').textContent=(T.updated||'').slice(5)+' 기준';
 }
 /* ── 오늘 시장상황: 받아 둔 데이터만으로 만드는 자동 요약 ── */
 function renderBrief(){
@@ -1168,8 +1195,8 @@ function setNotes(){
   $('notice').textContent = reduce ? NOTES[0] : NOTES[noteI%NOTES.length];
 }
 function loadAll(){
-  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief()]).then(function(r){
-    BRIEF = r[6] && r[6].headline ? r[6] : null;
+  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; })]).then(function(r){
+    BRIEF = r[6] && r[6].headline ? r[6] : null; TRADE = r[7] && r[7].slots ? r[7] : null;
     MARKET=r[1]; SECTORS=r[2]; META=r[3]; FINP=(r[4]&&r[4].items)||{}; buildBoard();
     MKTOK = r[5]&&r[5].rows&&r[5].rows.length>80 ? KRT.marketOk(r[5].rows.map(function(x){ return [ymd(x[0]), x[1]]; })) : null;
     return Promise.all(r[0].stocks.map(function(m){ return getJSON('stocks/'+m.code+'.json').then(function(d){ return [m,d]; }); }));

@@ -31,6 +31,7 @@ DOMAINS = [("모의투자", "https://openapivts.koreainvestment.com:29443"),
            ("실전", "https://openapi.koreainvestment.com:9443")]
 GAP = 0.5           # 호출 사이 간격(초). 모의투자는 초당 한도가 낮다.
 Q = "/uapi/domestic-stock/v1/quotations/"
+AFTER_CLOSE = NOW.weekday() < 5 and NOW.hour * 100 + NOW.minute >= 1535   # 평일 15:35 이후
 HIST_DAYS = 5       # 30분봉으로 보관할 지난 거래일 수
 
 
@@ -448,9 +449,12 @@ def main():
         d = {"code": code, "name": s["name"], "type": s["type"], "updated": meta["updated"], "date": TODAY}
         d["quote"] = quote(k, code) or old.get("quote")
         d["m1"] = minutes_today(k, code, old.get("m1", []) if old.get("date") == TODAY else [])
-        if stale(ts, "daily", 3 * 3600) or not old.get("daily") or "hist" not in ts:
+        closing = AFTER_CLOSE and ts.get("closed") != TODAY          # 마감 뒤 첫 실행: 오늘 일봉을 확정값으로 다시 받는다
+        if stale(ts, "daily", 3 * 3600) or not old.get("daily") or "hist" not in ts or closing:
             d["daily"], ok = long_daily(k, code, old.get("daily"), ts)
             ts["daily"] = EPOCH if ok else ts.get("daily", 0)
+            if ok and closing:
+                ts["closed"] = TODAY
         else:
             d["daily"] = old["daily"]
         # 지난 거래일의 30분봉: 없는 날짜만 받는다
@@ -492,10 +496,13 @@ def main():
     # 시장(KOSPI200 ETF) 긴 일봉: 시장 필터와 성적표에 쓴다
     old = load("market_daily.json", {})
     ts = old.get("ts", {})
-    if stale(ts, "daily", 3 * 3600) or not old.get("rows"):
+    closing = AFTER_CLOSE and ts.get("closed") != TODAY
+    if stale(ts, "daily", 3 * 3600) or not old.get("rows") or closing:
         rows, ok = long_daily(k, cfg["sector_market"]["code"], [[r[0], 0, 0, 0, r[1], 0] for r in old.get("rows", [])], ts)
         if ok:
             ts["daily"] = EPOCH
+            if closing:
+                ts["closed"] = TODAY
             save("market_daily.json", {"code": cfg["sector_market"]["code"], "ts": ts, "rows": [[r[0], r[4]] for r in rows]})
 
     old = load("sectors.json", {})

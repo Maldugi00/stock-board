@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "live": true,
+  "budget": 10000000,
+  "per_stock": 2500000,
+  "mode": "trend",
+  "codes": ["005930", "000660", "122630", "494310"]
+}
