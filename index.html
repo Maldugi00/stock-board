@@ -608,7 +608,7 @@ function renderBrief(){
     (s.d.opinion||[]).forEach(function(o){ if (!o.firm || seen[o.firm] || String(o.d)<cutS) return; seen[o.firm]=1; n++; if (opKind(o.op)==='b') buy++; if (o.target>0) t.push(o.target); });
     if (n && t.length && s.base){ var av=t.reduce(function(a,b){ return a+b; },0)/t.length; ex.push('<b>'+esc(s.name)+'</b> 증권사 '+n+'곳 중 '+buy+'곳 매수 의견 · 평균 목표가 '+fmt(av)+'원 (현재가 대비 <span class="'+(av>=s.base?'up':'down')+'">'+pc(av/s.base-1)+'</span>)'); } });
   if (ex.length) L.push(['전문가','최근 30일 기준이에요.<br>'+ex.join('<br>')+'<br>목표가는 급등락을 늦게 반영하니 방향만 참고하세요.']);
-  var seenT={}, news=[]; mine.forEach(function(s){ (s.d.news||[]).forEach(function(n){ if (!n.title || seenT[n.title] || /인기검색|상위 ?\d+종목|공시\)/.test(n.title)) return; seenT[n.title]=1; news.push(n); }); });
+  var seenT={}, news=[]; mine.forEach(function(s){ (s.d.news||[]).forEach(function(n){ if (!n.title || seenT[n.title] || n.src==='인포스탁' || /인기검색|상위 ?\d+ ?종목/.test(n.title)) return; seenT[n.title]=1; news.push(n); }); });
   var kw=new RegExp(mine.map(function(s){ return s.name.replace(/^KODEX\s*/,'').replace(/레버리지/g,'').trim(); }).filter(function(x){ return x.length>1; }).concat(['삼전','하이닉스','닉스','코스피','코스닥','증시','반도체','메모리','HBM','외국인','금리','환율']).join('|'));
   news.forEach(function(n){ n.rel=kw.test(n.title)?1:0; });
   news.sort(function(a,b){ return b.rel-a.rel || (String(b.d)+b.t).localeCompare(String(a.d)+a.t); });
