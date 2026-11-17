@@ -357,12 +357,25 @@ def main():
     old = load("sectors.json", {})
     if EPOCH - old.get("ts", 0) >= 30 * 60 or not old.get("sectors"):
         out = []
-        for s in [cfg["sector_market"]] + cfg["sectors"]:
+        had = {s["code"]: s.get("parts") for s in old.get("sectors", [])}
+        parts_old = EPOCH - old.get("parts_ts", 0) >= 6 * 3600          # 구성 종목은 6시간마다만 다시 받는다
+        got_parts = False
+        for i, s in enumerate([cfg["sector_market"]] + cfg["sectors"]):
             rows = daily(k, s["code"], windows=((140, 0),))
-            if rows:
-                out.append({"code": s["code"], "name": s["name"], "closes": [[r[0], r[4]] for r in rows[-70:]]})
+            if not rows:
+                continue
+            item = {"code": s["code"], "name": s["name"], "closes": [[r[0], r[4]] for r in rows[-70:]]}
+            if i > 0:
+                parts = had.get(s["code"])
+                if parts_old or not parts:
+                    e = etf_parts(k, s["code"])
+                    if e and e["parts"]:
+                        parts, got_parts = e["parts"][:5], True
+                item["parts"] = parts or []
+            out.append(item)
         if out:
-            save("sectors.json", {"updated": meta["updated"], "ts": EPOCH, "market": out[0], "sectors": out[1:]})
+            save("sectors.json", {"updated": meta["updated"], "ts": EPOCH, "parts_ts": EPOCH if got_parts else old.get("parts_ts", 0),
+                                  "market": out[0], "sectors": out[1:]})
 
     meta["calls"] = k.calls
     meta["errors"] = k.errors[:30]
