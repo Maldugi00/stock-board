@@ -229,6 +229,24 @@ def run(cfg, m):
             if not left:
                 plan["done"] = TODAY
 
+    # 2-1) 주문 형식 점검 (처음 한 번만): 장중에 하한가보다 훨씬 낮은 1원 지정가 1주 매수를 보내 거부 사유를 확인한다.
+    #      1원은 가격 제한폭 밖이라 체결될 수 없다. 혹시 접수되면 바로 취소한다.
+    if live and not led.get("probe") and 910 <= HM < 1500 and (sig.get(cfg["codes"][0]) or {}).get("open_today"):
+        status, js = c.http("POST", MOCK + T + "order-cash", {"content-type": "application/json; charset=utf-8", "authorization": "Bearer " + m.token,
+                            "appkey": c.APP_KEY, "appsecret": c.APP_SECRET, "tr_id": "VTTC0012U", "custtype": "P"},
+                            {"CANO": CANO, "ACNT_PRDT_CD": PRD, "PDNO": cfg["codes"][0], "ORD_DVSN": "00", "ORD_QTY": "1", "ORD_UNPR": "1",
+                             "EXCG_ID_DVSN_CD": "KRX", "SLL_TYPE": "", "CNDT_PRIC": ""})
+        js = js if isinstance(js, dict) else {}
+        msg = f"{js.get('msg_cd', status)} {str(js.get('msg1', '')).strip()}"[:80]
+        if str(js.get("rt_cd")) == "0":
+            out = js.get("output") or {}
+            m.call("POST", T + "order-rvsecncl", "VTTC0013U",
+                   {"CANO": CANO, "ACNT_PRDT_CD": PRD, "KRX_FWDG_ORD_ORGNO": out.get("KRX_FWDG_ORD_ORGNO", ""), "ORGN_ODNO": out.get("ODNO", ""),
+                    "ORD_DVSN": "00", "RVSE_CNCL_DVSN_CD": "02", "ORD_QTY": "0", "ORD_UNPR": "0", "QTY_ALL_ORD_YN": "Y", "EXCG_ID_DVSN_CD": "KRX"}, "점검 주문 취소")
+            msg = "접수됨(바로 취소) " + msg
+        led["probe"] = {"d": D(TODAY), "t": c.NOW.strftime("%H:%M"), "msg": msg}
+        print("주문 형식 점검:", msg)
+
     # 3) 마감 뒤: 확정 일봉으로 내일 할 일을 정한다 (하루 한 번)
     ready = [g for g in sig.values() if not g.get("error") and g.get("closed") and g.get("date") == D(TODAY) and g.get("open_today")]
     if HM >= 1540 and led.get("planned_on") != TODAY and len(ready) == len(cfg["codes"]):
@@ -267,7 +285,7 @@ def run(cfg, m):
     pub = {"updated": c.NOW.strftime("%Y-%m-%d %H:%M"), "live": live, "start": led["start"], "mode": cfg.get("mode", "trend"), "ret": round(ret, 4),
            "planned_on": D(led["planned_on"]) if led.get("planned_on") else None, "slots": slots,
            "log": [{k: v for k, v in e.items() if v is not None} for e in led["log"][-12:]][::-1],
-           "errors": [e[:100] for e in m.errors][-3:]}
+           "errors": [e[:100] for e in m.errors][-3:], "probe": led.get("probe")}
     c.save(PUBLIC, pub)
     save_ledger(led)
     print(f"모의계좌 처리 완료 ({'실제 모의 주문' if live else '연습 모드'}). 오류 {len(m.errors)}건")
