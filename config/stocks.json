@@ -12,7 +12,6 @@
     {"code": "005380", "name": "현대차", "type": "stock", "group": "watch"},
     {"code": "035420", "name": "NAVER", "type": "stock", "group": "watch"}
   ],
-  "trade": {"enabled": true, "orders": true, "mode": "trend", "cap": 2500000, "codes": ["005930", "000660", "122630", "494310"]},
   "sector_market": {"code": "069500", "name": "KOSPI200 (KODEX 200)"},
   "sectors": [
     {"code": "091160", "name": "반도체"},

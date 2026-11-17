@@ -23,11 +23,11 @@ jobs:
           if git fetch --depth 1 origin data 2>/dev/null; then
             git archive FETCH_HEAD state | tar -x -C data || true
           fi
-      - name: 모의계좌 점검 (잔고·주문 형식·체결 조회)
+      - name: 모의계좌 잔고 조회
         env:
           KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
           KIS_ACCOUNT_NO: ${{ secrets.KIS_ACCOUNT_NO }}
           KIS_ACCOUNT_PRD: ${{ secrets.KIS_ACCOUNT_PRD }}
           DATA_DIR: data
-        run: python3 scripts/trade.py probe balance
+        run: python3 scripts/trade.py balance
