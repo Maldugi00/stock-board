@@ -289,7 +289,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.0</div>
+    <div class="ver mono">v1.1</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -436,7 +436,7 @@ var ETF_NOTE = '레버리지 ETF는 지수의 하루 수익률을 2배로 따라
 var PHASES = ['차트 읽기','시장 확인','교차 점검','위험 계산','재확인','결론'], PH=[0,1,2,2,3,3,4,5];
 var COLORS = ['#6288bd','#b3775a','#56a595','#bf9a5a','#8a7fb5','#5f9aa8','#a9797f','#7f8a99'];
 var SEMI = {'005930':1,'000660':1,'494310':1};          // 반도체 섹터와 직결되는 종목
-var STOCKS = [], ALL = [], MARKET = null, SECTORS = null, META = null, BOARD = null;
+var STOCKS = [], ALL = [], MARKET = null, SECTORS = null, META = null, BOARD = null, FINP = {};
 var state = {i:0, tf:30, step:0, focus:'core', tab:'judge', sect:0, top:-1, edit:false, page:'a', side:false, t0:performance.now(), stepAt:performance.now(), m:0, spin:0, last:performance.now()};
 
 function getJSON(p){ return fetch(DATA+p+'?t='+Math.floor(Date.now()/60000), {cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error(p+' '+r.status); return r.json(); }); }
@@ -598,13 +598,20 @@ function renderSect(){
   renderSectTop();
 }
 function newsLink(q){ return '<a class="nlink" href="https://www.google.com/search?tbm=nws&q='+encodeURIComponent(q)+'" target="_blank" rel="noopener">뉴스 ↗</a>'; }
+function briefHTML(f){
+  if (!f || f.rev==null && f.op==null) return '<p class="hint" style="margin:0 0 8px">전자공시 재무를 받지 못한 종목이에요.</p>';
+  var mg=f.rev?f.op/f.rev*100:null, debt=f.equity?f.debt/f.equity*100:null;
+  return '<dl><div><dt>매출 ('+f.q+')</dt><dd>'+jo(f.rev)+'</dd></div><div><dt>영업이익</dt><dd>'+jo(f.op)+'</dd></div><div><dt>영업이익률</dt><dd>'+(mg==null?'–':mg.toFixed(1)+'%')+'</dd></div>'+
+    '<div><dt>순이익</dt><dd>'+jo(f.net)+'</dd></div><div><dt>부채비율</dt><dd>'+(debt==null?'–':debt.toFixed(0)+'%')+'</dd></div><div><dt>자본총계</dt><dd>'+jo(f.equity)+'</dd></div></dl>'+
+    '<p class="read" style="--c:var(--blue)"><b>한 줄 요약</b> '+(mg==null?'':(mg>=10?'영업이익률이 10%를 넘어 수익성이 좋은 편이에요. ':(mg<0?'영업손실 상태예요. ':'영업이익률이 한 자릿수라 수익성은 평범해요. ')))+(debt==null?'':(debt>500?'은행·증권·보험 같은 금융회사는 예금 등이 부채로 잡혀 부채비율이 높게 나오는 게 보통이에요.':(debt>150?'부채비율이 150%를 넘어 부담이 있는 편입니다.':'부채비율은 무리 없는 수준입니다.')))+'</p><div style="height:8px"></div>';
+}
 function renderSectTop(){
   var t=BOARD.byWeek[state.sect]; if (!t) return;
   var src=SECTORS.sectors.filter(function(s){ return s.code===t.code; })[0]||{}, parts=(src.parts||[]).slice(0,5);
   var rows=parts.map(function(p,k){ var u=p.pct>=0, open=k===state.top;
     return '<article><span class="rk">'+(k+1)+'</span><button class="tsel" data-top="'+k+'" aria-expanded="'+open+'"><span class="nm">'+esc(p.name)+' <span class="hint">'+(open?'▴':'▾')+'</span></span><span class="sub">ETF 안 비중 '+p.weight.toFixed(1)+'%</span></button>'+
       '<span class="rt"><span class="'+(u?'up':'down')+'">'+(u?'+':'')+p.pct.toFixed(2)+'%</span><br><span class="hint">오늘</span></span>'+
-      (open?'<div class="fin"><p class="hint" style="margin:0 0 8px">재무(매출·영업이익 등)는 전자공시 연결 뒤에 여기 나와요.</p>'+newsLink(p.name)+'</div>':'')+'</article>'; }).join('');
+      (open?'<div class="fin">'+briefHTML(FINP[p.code])+newsLink(p.name)+'</div>':'')+'</article>'; }).join('');
   $('sect-top').innerHTML='<div class="sec-head" style="margin-bottom:0"><h3>'+t.name+' 상위 5종목</h3><span class="hint">대표 ETF 비중 순</span></div>'+
     '<p class="read" style="--c:var(--blue);margin-top:8px"><b>'+t.state+'</b> 5일 '+pc(t.r5)+' · 20일 '+pc(t.r20)+' · 60일 '+pc(t.r60)+'. '+esc(t.outlook)+'.</p>'+
     (rows?'<div class="top3">'+rows+'</div>':'<p class="hint" style="margin:8px 0 0">구성 종목을 아직 받지 못했어요.</p>');
@@ -733,6 +740,18 @@ function opinionStats(s){
   return {latest:latest, n:n, cnt:cnt, pct:n?{b:Math.round(cnt.b/n*100),h:Math.round(cnt.h/n*100),s:Math.round(cnt.s/n*100)}:null,
     target:t.length?{avg:t.reduce(function(a,b){return a+b;},0)/t.length, max:Math.max.apply(null,t), min:Math.min.apply(null,t), n:t.length}:null};
 }
+function jo(v){ if (v==null||isNaN(v)) return '–'; var a=Math.abs(v); return a>=1e12 ? (v/1e12).toFixed(a>=1e13?0:1)+'조' : fmt(v/1e8)+'억'; }
+function finPanel(f){
+  if (!f || !f.quarters || !f.quarters.length) return '<div class="panel"><h3>분기 실적·재무</h3><p class="hint" style="margin:6px 0 0">전자공시(DART) 데이터를 아직 받지 못했어요.</p></div>';
+  var q=f.quarters, last=q[q.length-1], yago=q.length>=5?q[q.length-5]:null, mg=last.rev?last.op/last.rev*100:null, bs=f.bs||{}, debt=bs.equity?bs.debt/bs.equity*100:null;
+  var yoy=yago&&yago.rev?(last.rev-yago.rev)/yago.rev:null, prev=q.length>=2?q[q.length-2]:null, up=prev&&last.op!=null&&prev.op!=null ? last.op>prev.op : null;
+  return '<div class="panel"><div class="sec-head" style="margin-bottom:6px"><h3>분기 실적·재무</h3><span class="hint">전자공시 · '+last.q+' 기준</span></div>'+
+    '<dl class="kv" style="margin-top:0;grid-template-columns:repeat(3,1fr)"><div><dt>매출</dt><dd>'+jo(last.rev)+'</dd></div><div><dt>영업이익</dt><dd>'+jo(last.op)+'</dd></div><div><dt>영업이익률</dt><dd>'+(mg==null?'–':mg.toFixed(1)+'%')+'</dd></div>'+
+    '<div><dt>순이익</dt><dd>'+jo(last.net)+'</dd></div><div><dt>매출 전년비</dt><dd>'+(yoy==null?'–':pc(yoy))+'</dd></div><div><dt>부채비율</dt><dd>'+(debt==null?'–':debt.toFixed(0)+'%')+'</dd></div></dl>'+
+    '<canvas class="cv" id="cv-earn" style="height:170px;margin-top:10px" aria-label="분기별 영업이익"></canvas>'+
+    '<p class="read" style="--c:var(--blue)"><b>읽는 법</b> 막대는 분기별 영업이익이에요. '+(up==null?'':'최근 분기는 직전 분기보다 '+(up?'늘었어요. ':'줄었어요. '))+
+    (mg==null?'':(mg>=10?'영업이익률이 10%를 넘어 수익성이 좋은 편이고, ':'영업이익률이 한 자릿수라 수익성은 평범하고, '))+(debt==null?'':(debt>500?'금융회사는 예금 등이 부채로 잡혀 부채비율이 높게 나오는 게 보통이에요.':(debt>150?'부채비율은 150%를 넘어 부담이 있는 편입니다.':'부채비율은 무리 없는 수준입니다.')))+' 공시된 실적이라 다음 분기 전망은 들어 있지 않아요.</p></div>';
+}
 function renderCorp(){
   var s=STOCKS[state.i], el=$('p-corp');
   if (s.type==='etf'){ var e=s.d.etf;
@@ -758,12 +777,22 @@ function renderCorp(){
     html+='<div class="panel"><div class="sec-head" style="margin-bottom:6px"><h3>최근 의견</h3><span class="hint">날짜 순</span></div><ul class="news">'+st.latest.slice(0,8).map(function(o){ var d=o.d||'', ch=o.was&&o.was!==o.op;
       return '<li style="padding:8px 0"><div class="tt" style="font-size:14px">'+esc(o.firm)+' · '+esc(o.op)+(ch?' <span class="hint">('+esc(o.was)+'에서 변경)</span>':'')+'</div><div class="meta">'+d.slice(4,6)+'/'+d.slice(6,8)+(o.target>0?' · 목표가 '+fmt(o.target)+'원':'')+'</div></li>'; }).join('')+'</ul></div>'; }
   if (!html) html='<div class="panel"><p class="hint">전문가 의견을 아직 받지 못했어요.</p></div>';
-  html+='<div class="panel"><h3>분기 실적·재무</h3><p class="hint" style="margin:6px 0 0">전자공시(DART) 연결을 준비하고 있어요. 연결되면 매출, 영업이익, 부채비율이 여기에 나옵니다.</p></div>';
+  html+=finPanel(s.d.fin);
   el.innerHTML=html; drawCorp();
 }
 function drawCorp(){
   if (!STOCKS.length) return;
-  var s=STOCKS[state.i]; if (state.tab!=='corp' || s.type==='etf' || !$('cv-target')) return;
+  var s=STOCKS[state.i]; if (state.tab!=='corp' || s.type==='etf') return;
+  var f=s.d.fin;
+  if (f && f.quarters && f.quarters.length && $('cv-earn')){ var e=ctxOf('cv-earn'), eg=e.g, q=f.quarters, vals=q.map(function(x){ return x.op||0; });
+    var hi=Math.max(0,Math.max.apply(null,vals)), lo=Math.min(0,Math.min.apply(null,vals)), span=(hi-lo)||1, top=18, bot=20, H=e.H-top-bot, bw=e.W/q.length;
+    var Y=function(v){ return top+(hi-v)/span*H; };
+    eg.strokeStyle='rgba(120,140,170,.3)'; eg.beginPath(); eg.moveTo(0,Y(0)); eg.lineTo(e.W,Y(0)); eg.stroke(); eg.textAlign='center';
+    q.forEach(function(x,k){ var v=x.op||0, cx=k*bw+bw/2, y0=Y(0), y1=Y(v);
+      eg.fillStyle=rgba(v>=0?C.market:C.down, k===q.length-1?0.95:0.55); eg.fillRect(cx-bw*0.3, Math.min(y0,y1), bw*0.6, Math.max(1,Math.abs(y1-y0)));
+      eg.fillStyle=C.ink; eg.fillText(x.op==null?'–':jo(x.op), cx, Math.min(y0,y1)-8); eg.fillStyle=C.muted; eg.fillText(x.q, cx, e.H-8); });
+    eg.textAlign='left'; }
+  if (!$('cv-target')) return;
   var T=opinionStats(s).target; if (!T) return;
   var t=ctxOf('cv-target'), g=t.g, hist=s.rows.slice(-70).map(function(r){ return r[4]; });
   var mn=Math.min(T.min,s.base,Math.min.apply(null,hist)), mx=Math.max(T.max,s.base,Math.max.apply(null,hist)), pd=(mx-mn)*0.1; mn-=pd; mx+=pd;
@@ -930,8 +959,8 @@ function setNotes(){
   $('notice').textContent = reduce ? NOTES[0] : NOTES[noteI%NOTES.length];
 }
 function loadAll(){
-  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; })]).then(function(r){
-    MARKET=r[1]; SECTORS=r[2]; META=r[3]; buildBoard();
+  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; })]).then(function(r){
+    MARKET=r[1]; SECTORS=r[2]; META=r[3]; FINP=(r[4]&&r[4].items)||{}; buildBoard();
     return Promise.all(r[0].stocks.map(function(m){ return getJSON('stocks/'+m.code+'.json').then(function(d){ return [m,d]; }); }));
   }).then(function(pairs){
     var cur=STOCKS.length ? STOCKS[state.i].code : null; cache={};
