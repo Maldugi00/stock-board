@@ -177,6 +177,15 @@ header.top{display:flex;flex-direction:column;gap:10px}
 .modes button{font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:#aab3bf;cursor:pointer}
 .modes button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:rgba(194,103,58,.1)}
 .lg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:#aab3bf;margin-top:6px;align-items:center}
+.modes{flex-wrap:wrap}
+.tl{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:13px;color:var(--ink)}
+.tl li{line-height:1.45}
+.tl i{display:block;font-style:normal;font-size:11px;color:var(--muted)}
+.tl span{font-family:var(--font-mono);margin-right:4px}
+.sc.bk{margin-top:12px}
+.sc.bk tbody th{color:var(--ink);font-size:13px}
+.sc.bk tbody th i{display:block;font-style:normal;font-size:11px;color:var(--muted)}
+.sc.bk td:nth-child(2){font-family:var(--font-body);font-size:12px;color:#aab3bf}
 .lg i{display:inline-block;width:14px;height:2px;margin-right:5px;vertical-align:middle}
 .kv dd{margin:2px 0 0;font-family:var(--font-mono);font-weight:600;font-variant-numeric:tabular-nums}
 .times{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
@@ -311,7 +320,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.4</div>
+    <div class="ver mono">v1.5</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -346,6 +355,11 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
   <section aria-labelledby="h-list">
     <div class="sec-head"><h2 id="h-list">내 종목</h2><button class="btn sm edit-btn" aria-pressed="false">편집</button></div>
     <ul class="rows" id="rows"></ul>
+  </section>
+
+  <section aria-labelledby="h-book">
+    <div class="sec-head"><h2 id="h-book">신호 기록장</h2><span class="eyebrow">가상 1,000만원</span></div>
+    <div class="panel brief" id="book"></div>
   </section>
 
   <section aria-labelledby="h-watch">
@@ -398,6 +412,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
       <div class="detail" id="detail" aria-live="polite"></div>
       <div class="panel" id="plan"></div>
       <div class="panel" id="score"></div>
+      <div class="panel" id="hist"></div>
     </div>
 
     <!-- 차트 -->
@@ -579,7 +594,7 @@ if (!saved || !saved.groups || !Array.isArray(saved.removed)) saved=fresh();
 function persist(){ try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch(e){} }
 function buildList(){ STOCKS = ALL.filter(function(s){ return saved.removed.indexOf(s.code)<0; }); if (!STOCKS.length) STOCKS=ALL.slice();
   STOCKS.forEach(function(s){ s.group = saved.groups[s.code] || s.group0; }); }
-function moveStock(idx){ var s=STOCKS[idx]; s.group = s.group==='mine'?'watch':'mine'; saved.groups[s.code]=s.group; persist(); renderRows(); toast(s.name+(s.group==='mine'?' 내 종목으로 옮겼어요.':' 관심종목으로 옮겼어요.')); }
+function moveStock(idx){ var s=STOCKS[idx]; s.group = s.group==='mine'?'watch':'mine'; saved.groups[s.code]=s.group; persist(); renderRows(); renderBrief(); renderBook(); toast(s.name+(s.group==='mine'?' 내 종목으로 옮겼어요.':' 관심종목으로 옮겼어요.')); }
 function removeStock(idx){
   if (STOCKS.length<=1){ toast('최소 한 종목은 남겨주세요.'); return; }
   var s=STOCKS[idx]; saved.removed.push(s.code); persist(); STOCKS.splice(idx,1); toast(s.name+' 숨겼어요. "처음 목록으로"를 누르면 다시 나와요.');
@@ -599,7 +614,65 @@ function renderMarket(){
   var a=two[0].pct>=0, b=two[1].pct>=0, wide=two[0].up+two[0].down ? two[0].up/(two[0].up+two[0].down) : 0.5;
   $('r-mkt').innerHTML='<b>읽는 법</b> '+(a&&!b?'코스피는 오르고 코스닥은 내려요. 대형주로 돈이 몰리는 날입니다.':(!a&&b?'코스닥만 오르는 날이에요. 중소형주 쪽으로 돈이 움직입니다.':(a?'두 지수가 함께 올라 시장 전체가 강한 날이에요.':'두 지수가 함께 내려 시장 전체가 약한 날이에요.')))+
     ' 코스피에서 오른 종목은 전체의 '+(wide*100).toFixed(0)+'%예요. 점선은 어제 종가입니다.';
-  drawMarket(); renderBrief();
+  drawMarket(); renderBrief(); renderBook();
+}
+/* ── 신호 기록장: 가상 자금을 내 종목에 똑같이 나눠, 고른 방식의 신호대로만 사고판다 (주문은 하지 않는다) ── */
+var BOOK_CAP=10000000, BOOK=null;
+function bookStart(){ if (!saved.book || !saved.book.start){ var n=new Date(Date.now()+9*36e5); saved.book={start:n.toISOString().slice(0,10)}; persist(); } return saved.book.start; }
+function simSlot(s, start, cap){
+  var a=s.a; if (!a) return null; var ind=a.ind, p=MODES[s.mode].p, fee=a.cost.fee, tax=a.cost.tax, SL=KRT.SLIP, n=ind.n;
+  var cash=cap, sh=0, hi=0, pend=null, why='', ep=0, i0=-1, eq=[], bh=[], tr=[], i;
+  for (i=0;i<n;i++){ if (ind.d[i]<start) continue; if (i0<0) i0=i;
+    if (pend==='buy' && sh===0){ var px=ind.o[i]*(1+SL), q=Math.floor(cash/(px*(1+fee))); if (q>0){ cash-=q*px*(1+fee); sh=q; hi=ind.h[i]; ep=px*(1+fee); tr.push({d:ind.d[i],name:s.name,act:'매수',q:q,px:px,why:why}); } }
+    else if (pend==='sell' && sh>0){ var xp=ind.o[i]*(1-SL)*(1-fee-tax); cash+=sh*xp; tr.push({d:ind.d[i],name:s.name,act:'매도',q:sh,px:ind.o[i]*(1-SL),why:why,ret:xp/ep-1}); sh=0; }
+    pend=null; if (sh>0) hi=Math.max(hi,ind.h[i]);
+    if (sh===0){ if (ind.buy[i] && !(ind.mok && ind.mok[i]===false)){ pend='buy'; why=ind.bt[i]; } }
+    else if (ind.c[i]<hi-p.atr_mult*ind.atr[i]){ pend='sell'; why='트레일링 스탑'; }
+    else if (!p.no_trend_exit && ind.c[i]<ind.s20[i] && ind.mh[i]<0){ pend='sell'; why='추세 훼손'; }
+    eq.push(cash+sh*ind.c[i]); bh.push(cap*ind.c[i]/ind.c[i0]); }
+  return {s:s, d:i0<0?[]:ind.d.slice(i0), eq:eq, bh:bh, tr:tr, sh:sh, cash:cash, ep:ep, pend:pend, why:why, last:ind.c[n-1], cap:cap};
+}
+function buildBook(){
+  var mine=STOCKS.filter(function(s){ return s.group==='mine' && s.a; }); if (!mine.length){ BOOK=null; return; }
+  var live=bookStart(), view=state.book||'live', back={m3:92,y1:365}[view], start=live;
+  if (back){ var t=new Date(Date.now()+9*36e5-back*864e5); start=t.toISOString().slice(0,10); }
+  var cap=BOOK_CAP/mine.length, slots=mine.map(function(s){ return simSlot(s,start,cap); }).filter(Boolean), dates={};
+  slots.forEach(function(x){ x.d.forEach(function(d){ dates[d]=1; }); }); var D=Object.keys(dates).sort(), eq=[], bh=[];
+  D.forEach(function(d,k){ var e=0, b=0; slots.forEach(function(x){ var j=x.d.indexOf(d); if (j<0){ j=-1; for (var m=x.d.length-1;m>=0;m--) if (x.d[m]<d){ j=m; break; } } e+=j<0?x.cap:x.eq[j]; b+=j<0?x.cap:x.bh[j]; }); eq.push(e); bh.push(b); });
+  var tr=[]; slots.forEach(function(x){ tr=tr.concat(x.tr); }); tr.sort(function(a,b){ return a.d<b.d?1:(a.d>b.d?-1:0); });
+  BOOK={view:view, start:start, live:live, slots:slots, D:D, eq:eq, bh:bh, tr:tr, n:mine.length};
+}
+function renderBook(){
+  var el=$('book'); if (!el) return; buildBook();
+  if (!BOOK){ el.innerHTML='<p class="hint" style="margin:0">내 종목이 없어서 기록할 것이 없어요.</p>'; return; }
+  var B=BOOK, L=B.eq.length-1, val=L<0?BOOK_CAP:B.eq[L], hv=L<0?BOOK_CAP:B.bh[L], ret=val/BOOK_CAP-1, hret=hv/BOOK_CAP-1, cash=0; B.slots.forEach(function(x){ cash+=x.cash; });
+  var md=function(d){ return d.slice(2).replace(/-/g,'.'); }, sp=function(v){ return '<span class="'+(v>=0?'up':'down')+'">'+pc(v)+'</span>'; };
+  var chips=[['live','실제 기록 ('+md(B.live)+'~)'],['m3','3개월 전부터였다면'],['y1','1년 전부터였다면']];
+  var rows=B.slots.map(function(x){ var st=x.sh>0 ? (x.pend==='sell'?'보유 · 매도 예정':'보유 '+x.sh+'주') : (x.pend==='buy'?'현금 · 매수 예정':'현금'), v=x.cash+x.sh*x.last;
+    return '<tr><th>'+esc(x.s.name)+'<i>'+MODES[x.s.mode].name+'</i></th><td>'+st+'</td><td>'+fmt(v)+'</td><td>'+sp(v/x.cap-1)+'</td></tr>'; }).join('');
+  var trs=B.tr.slice(0,6).map(function(t){ return '<li><span class="'+(t.act==='매수'?'up':'down')+'">'+t.act+'</span> '+esc(t.name)+' '+t.q+'주 · '+fmt(t.px)+'원<i>'+md(t.d)+' · '+esc(t.why)+(t.ret!=null?' · '+pc(t.ret):'')+'</i></li>'; }).join('');
+  var pendN=B.slots.filter(function(x){ return x.pend; }).length, liveV=B.view==='live';
+  var txt=(liveV ? (B.tr.length ? '기록을 시작한 뒤 '+B.tr.length+'번 사고팔았어요. ' : '기록을 시작한 '+md(B.live)+'부터 아직 매수 신호가 없어 전부 현금이에요. 신호가 나오면 다음 거래일 시가에 산 것으로 기록합니다. ')
+      : '실제 기록이 아니라, 그때부터 지금 고른 방식으로 운영했다면 어땠을지 계산한 거예요. ')+
+    '가상 '+fmt(BOOK_CAP/10000)+'만원을 내 종목 '+B.n+'개에 똑같이 나눠 두고, 종목마다 고른 방식의 신호대로만 사고팝니다. '+
+    (L>0?'같은 돈으로 '+md(B.start)+'에 전부 사서 들고 있었다면 '+pc(hret)+'였어요. ':'')+(pendN?'오늘 신호는 장 마감 종가로 확정되니 "예정"은 바뀔 수 있어요. ':'')+
+    '실제 주문은 하지 않고, 수수료·세금·체결 오차는 반영합니다. 내 종목이나 방식을 바꾸면 처음부터 다시 계산돼요.';
+  el.innerHTML='<div class="modes">'+chips.map(function(c){ return '<button data-book="'+c[0]+'" aria-pressed="'+(c[0]===B.view)+'">'+c[1]+'</button>'; }).join('')+'</div>'+
+    '<dl class="kv" style="margin-top:4px"><div><dt>평가금액</dt><dd>'+fmt(val)+'원</dd></div><div><dt>수익률</dt><dd>'+sp(ret)+'</dd></div><div><dt>현금 비중</dt><dd>'+(cash/val*100).toFixed(0)+'%</dd></div><div><dt>그냥 보유했다면</dt><dd>'+(L>0?sp(hret):'–')+'</dd></div></dl>'+
+    (L>0?'<canvas class="cv" id="cv-book" style="height:140px;margin-top:10px" aria-label="기록장 자산 흐름"></canvas><div class="lg"><span><i style="background:var(--accent)"></i>기록장</span><span><i style="background:var(--muted)"></i>그냥 보유</span></div>':'')+
+    '<table class="sc bk"><thead><tr><th></th><th>상태</th><th>평가금액</th><th>손익</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+    (trs?'<div class="bn" style="margin-top:12px"><b>최근 거래</b><ul class="tl">'+trs+'</ul></div>':'')+
+    '<p class="read" style="--c:var(--accent)"><b>읽는 법</b> '+txt+'</p>';
+  drawBook();
+}
+function drawBook(){
+  if (!BOOK || !$('cv-book') || !$('cv-book').clientWidth) return; var c=ctxOf('cv-book'), g=c.g, n=BOOK.eq.length; if (n<2) return;
+  var e=BOOK.eq.map(function(v){ return v/BOOK_CAP-1; }), b=BOOK.bh.map(function(v){ return v/BOOK_CAP-1; }), all=e.concat(b,[0]), mn=Math.min.apply(null,all), mx=Math.max.apply(null,all), pd=(mx-mn)*0.1||0.01; mn-=pd; mx+=pd;
+  var W=c.W-PADR, X=function(i){ return i/(n-1)*W; }, Y=function(v){ return (mx-v)/(mx-mn)*c.H; };
+  g.setLineDash([3,4]); g.strokeStyle='rgba(120,140,170,.35)'; g.beginPath(); g.moveTo(0,Y(0)); g.lineTo(W,Y(0)); g.stroke(); g.setLineDash([]);
+  [[b,C.muted,1.1],[e,C.core,1.7]].forEach(function(t){ g.strokeStyle=t[1]; g.lineWidth=t[2]; g.beginPath(); t[0].forEach(function(v,i){ i?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v)); }); g.stroke(); });
+  g.lineWidth=1; g.textAlign='left'; var ye=Y(e[n-1]), yb=Y(b[n-1]); if (Math.abs(ye-yb)<12){ if (ye<=yb) yb=ye+12; else ye=yb+12; }
+  g.fillStyle=C.core; g.fillText(pc(e[n-1]), W+6, Math.max(7,Math.min(c.H-7,ye))); g.fillStyle=C.muted; g.fillText(pc(b[n-1]), W+6, Math.max(7,Math.min(c.H-7,yb)));
 }
 /* ── 오늘 시장상황: 받아 둔 데이터만으로 만드는 자동 요약 ── */
 function renderBrief(){
@@ -755,7 +828,18 @@ function renderScore(){
     '<canvas class="cv" id="cv-score" style="height:150px;margin-top:10px" aria-label="두 방식과 그냥 보유의 자산 흐름"></canvas>'+
     '<div class="lg"><span><i style="background:var(--accent)"></i>'+me+' (선택)</span><span><i style="background:var(--teal)"></i>'+ot+'</span><span><i style="background:var(--muted)"></i>그냥 보유</span><span class="hint">지금 '+me+' 기준 '+(A.st.holding?'보유 중':'현금')+'</span></div>'+
     '<p class="read" style="--c:var(--accent)"><b>읽는 법</b> '+txt+'</p>';
-  drawScore();
+  drawScore(); renderHist();
+}
+function renderHist(){
+  var el=$('hist'); if (!el) return; var s=STOCKS[state.i], a=s.a; if (!a){ el.innerHTML=''; return; }
+  var md=function(d){ return d.slice(2).replace(/-/g,'.'); }, tr=a.trades.slice(-6).reverse(), st=a.st, open=null;
+  for (var k=a.marks.length-1;k>=0;k--){ if (a.marks[k].k==='B'){ if (st.holding) open=a.marks[k]; break; } if (a.marks[k].k==='S') break; }
+  var now = st.pending==='buy' ? '오늘 매수 조건 충족 → 다음 거래일 시가 매수 후보' : st.pending==='sell' ? '오늘 매도 조건 충족 → 다음 거래일 시가 매도 후보' :
+    st.holding&&open ? md(a.ind.d[open.i])+'에 '+fmt(open.px)+'원으로 사서 보유 중 ('+pc(s.base/open.px-1)+')' : (tr.length?md(tr[0].out)+' 매도 뒤 현금으로 대기 중':'아직 거래가 없어요');
+  el.innerHTML='<div class="sec-head" style="margin-bottom:6px"><h3>신호 이력</h3><span class="hint">'+MODES[s.mode].name+' · 규칙대로 했다면</span></div>'+
+    '<p class="read" style="--c:var(--teal);margin:0 0 8px"><b>지금</b> '+now+'</p>'+
+    (tr.length?'<ul class="tl">'+tr.map(function(t){ return '<li><span class="'+(t.ret>=0?'up':'down')+'">'+pc(t.ret)+'</span> '+md(t.in)+' 매수 '+fmt(t.inPx)+'원 → '+md(t.out)+' 매도 '+fmt(t.outPx)+'원<i>'+esc(t.type)+' 진입 · '+esc(t.why)+' · '+t.days+'일 보유</i></li>'; }).join('')+'</ul>':'')+
+    '<p class="hint" style="margin:8px 0 0">최근 6번의 거래예요. 사이트가 그날 실제로 보여준 신호의 기록이 아니라, 지금 규칙을 과거 일봉에 적용한 결과입니다.</p>';
 }
 function drawScore(){
   if (!STOCKS.length || !$('cv-score') || !$('cv-score').clientWidth) return; var s=STOCKS[state.i], A=s.a, B=s.A[s.mode==='def'?'trend':'def']; if (!A || !B) return;
@@ -1014,7 +1098,7 @@ function setPage(pg){
   state.page=pg; tabLabel(); each('.pg', function(b){ b.setAttribute('aria-pressed', b.dataset.pg===pg); });
   ['a','b','c'].forEach(function(k){ $('pg-'+k).hidden = !state.side && k!==pg; });
   if (state.side) $('pg-'+pg).scrollIntoView({behavior:reduce?'auto':'smooth', inline:'start', block:'nearest'}); else window.scrollTo(0,0);
-  drawMarket(); renderTab();
+  drawMarket(); drawBook(); renderTab();
 }
 function setSide(on){
   state.side=on; $('cols').classList.toggle('side',on); document.body.classList.toggle('side',on);
@@ -1035,8 +1119,9 @@ document.addEventListener('click', function(e){
   if (!e.target.closest('.pages')) $('pick').hidden=true;
   var el=e.target.closest('button'); if(!el || !STOCKS.length) return;
   if (el.dataset.pick!=null){ $('pick').hidden=true; selectStock(+el.dataset.pick); setPage('b'); }
-  else if (el.dataset.del!=null){ removeStock(+el.dataset.del); }
-  else if (el.dataset.mode){ var ms=STOCKS[state.i]; if (ms.A[el.dataset.mode] && ms.mode!==el.dataset.mode){ ms.mode=el.dataset.mode; ms.a=ms.A[ms.mode]; if (!saved.modes) saved.modes={}; saved.modes[ms.code]=ms.mode; persist(); describe(ms); renderRows(); renderQuote(); renderTalk(); renderDetail(); renderPlan(); renderBrief(); toast(ms.name+' 신호를 '+MODES[ms.mode].name+'으로 바꿨어요.'); } }
+  else if (el.dataset.del!=null){ removeStock(+el.dataset.del); renderBrief(); renderBook(); }
+  else if (el.dataset.book){ state.book=el.dataset.book; renderBook(); }
+  else if (el.dataset.mode){ var ms=STOCKS[state.i]; if (ms.A[el.dataset.mode] && ms.mode!==el.dataset.mode){ ms.mode=el.dataset.mode; ms.a=ms.A[ms.mode]; if (!saved.modes) saved.modes={}; saved.modes[ms.code]=ms.mode; persist(); describe(ms); renderRows(); renderQuote(); renderTalk(); renderDetail(); renderPlan(); renderBrief(); renderBook(); toast(ms.name+' 신호를 '+MODES[ms.mode].name+'으로 바꿨어요.'); } }
   else if (el.classList.contains('edit-btn')){ state.edit=!state.edit; each('.edit-btn', function(b){ b.textContent=state.edit?'완료':'편집'; b.setAttribute('aria-pressed',state.edit); }); $('reset-btn').hidden=!state.edit; renderRows(); }
   else if (el.id==='reset-btn'){ saved=fresh(); persist(); buildList(); selectStock(0); toast('처음 목록으로 되돌렸어요.'); }
   else if (el.classList.contains('row')){ selectStock(+el.dataset.i); setPage('b'); }
@@ -1053,7 +1138,7 @@ document.addEventListener('click', function(e){
     var fail=function(){ box.hidden=false; box.value=q; box.focus(); box.select(); toast('아래 글을 길게 눌러 복사해주세요.'); };
     try { navigator.clipboard.writeText(q).then(function(){ toast('질문을 복사했어요. Claude 앱에 붙여넣어 보세요.'); }, fail); } catch(err){ fail(); } }
 });
-window.addEventListener('resize', function(){ if (!STOCKS.length) return; sizeOrb(); drawMarket(); drawChartTab(); drawCorp(); drawScore(); if (reduce) drawOrb(performance.now()); });
+window.addEventListener('resize', function(){ if (!STOCKS.length) return; sizeOrb(); drawMarket(); drawChartTab(); drawCorp(); drawScore(); drawBook(); if (reduce) drawOrb(performance.now()); });
 
 /* ── 불러오기: 처음 한 번, 그 뒤 2분마다 ── */
 var NOTES=['데이터를 불러오는 중이에요.'], noteI=0, started=false;
