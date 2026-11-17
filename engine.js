@@ -152,7 +152,7 @@
   function backtest(ind, cost, p, exec) {
     p = p || P0; exec = exec || 'open';
     var fee = cost.fee, tax = cost.tax, n = ind.n, o = ind.o, h = ind.h, c = ind.c;
-    var cash = 1, sh = 0, hi = 0, ep = 0, ei = 0, eqB = 1, pend = null, reason = '', etype = '';
+    var cash = 1, sh = 0, hi = 0, ep = 0, ei = 0, eqB = 1, pend = null, reason = '', etype = '', blocked = '', nBlock = 0;
     var eq = [], trades = [], marks = [];
     function doBuy(i, px0, hi0, why) {
       ep = px0 * (1 + SLIP); eqB = cash; sh = cash * (1 - fee) / ep; cash = 0; hi = hi0; ei = i; etype = why;
@@ -170,9 +170,12 @@
         if (pend === 'buy' && sh === 0) doBuy(i, o[i], h[i], reason);
         else if (pend === 'sell' && sh > 0) doSell(i, o[i], reason);
       }
-      pend = null;
+      pend = null; blocked = '';
       if (sh > 0) hi = Math.max(hi, h[i]);
-      if (sh === 0 && ind.buy[i]) { pend = 'buy'; reason = ind.bt[i]; }
+      if (sh === 0 && ind.buy[i]) {
+        if (ind.mok && ind.mok[i] === false) { blocked = ind.bt[i]; nBlock++; }   // 시장 필터: 시장이 약하면 새로 사지 않는다
+        else { pend = 'buy'; reason = ind.bt[i]; }
+      }
       else if (sh > 0) {
         if (c[i] < hi - p.atr_mult * ind.atr[i]) { pend = 'sell'; reason = '트레일링 스탑'; }
         else if (c[i] < ind.s20[i] && ind.mh[i] < 0) { pend = 'sell'; reason = '추세 훼손'; }
@@ -185,7 +188,7 @@
     }
     var holding = sh > 0;
     return { eq: eq, trades: trades, marks: marks,
-      st: { holding: holding, pending: pend, reason: reason, highest: hi, stop: holding ? hi - p.atr_mult * ind.atr[n - 1] : null } };
+      st: { holding: holding, pending: pend, reason: reason, blocked: blocked, nBlock: nBlock, highest: hi, stop: holding ? hi - p.atr_mult * ind.atr[n - 1] : null } };
   }
   function stats(ind, eq, trades) {
     var n = ind.n, years = Math.max((dayNum(ind.d[n - 1]) - dayNum(ind.d[0])) / 365.25, 1e-9), pk = 0, mdd = 0, pk2 = 0, bhm = 0, i;
@@ -228,6 +231,7 @@
       var w2 = st.reason === '트레일링 스탑' ? '트레일링 스탑 — 종가가 (최고가 − ' + p.atr_mult + '×ATR) 아래로 마감' : '추세 훼손 — 종가가 20일선 아래 + MACD 히스토그램 음수';
       return { status: '매도 신호', cls: 's', base: w2 + ' → 다음 거래일 시가 청산 후보', hold: null, hv: hv };
     }
+    if (st.blocked) return { status: '매수 보류', cls: 'w', base: (st.blocked === '눌림목' ? '눌림목' : '돌파') + ' 매수 조건은 충족했지만 시장(KOSPI200)이 60일선 아래라 새로 사지 않습니다', hold: (hv.sell ? '매도 구간 — ' : '유지 — ') + hv.text, hv: hv };
     if (st.holding) return { status: '보유 유지', cls: 'h', base: '청산 조건 미발생 — 트레일링 스탑 ' + won(st.stop) + ' (종가 ' + won(c) + ', 20일선 ' + won(ind.s20[L]) + ')', hold: null, hv: hv };
     var base = ind.up[L]
       ? '상승 추세이나 눌림목·돌파 진입 조건 미충족 (RSI ' + ind.rsi[L].toFixed(0) + ', 거래량 ' + ind.vr[L].toFixed(1) + '배)'
@@ -236,10 +240,12 @@
   }
 
   /** 한 종목 분석: 3년 백테스트 + 현재 신호 */
-  function analyze(rows, code, p, years) {
+  /** mkt: { 'YYYY-MM-DD': true|false } 시장이 60일선 위인지. 주면 false 인 날은 신규 매수를 막는다(매도는 그대로). */
+  function analyze(rows, code, p, years, mkt) {
     p = p || P0;
     var cost = tickerOf(code), full = indicators(rows, p), ind = cutYears(full, years || 3);
     if (ind.n < 30) throw new Error('데이터가 너무 짧습니다 (' + ind.n + '일)');
+    if (mkt) ind.mok = ind.d.map(function (d) { return mkt[d] !== false; });
     var bt = backtest(ind, cost, p), s = stats(ind, bt.eq, bt.trades), sg = signalText(ind, bt.st, p);
     return { code: code, cost: cost, full: full, ind: ind, eq: bt.eq, trades: bt.trades, marks: bt.marks, st: bt.st, s: s, sig: sg };
   }
@@ -313,6 +319,13 @@
   }
 
   // ───────── 섹터·시장 상태 ─────────
+  /** 시장 일봉 [[날짜, 종가]] → 날짜별 '종가가 60일선 이상인가'. 60일이 안 된 앞부분은 판단하지 않는다(막지 않음). */
+  function marketOk(rows) {
+    var c = rows.map(function (r) { return r[1]; }), m = sma(c, 60), out = {};
+    rows.forEach(function (r, i) { if (!isNaN(m[i])) out[r[0]] = c[i] >= m[i]; });
+    return out;
+  }
+
   function trendState(rows) {
     var n = rows.length;
     if (n < 61) return null;
@@ -500,7 +513,7 @@
   var api = { TICKERS: TICKERS, MARKET: MARKET, SECTORS: SECTORS, SLIP: SLIP, P0: P0, TRACK0: TRACK0, tickerOf: tickerOf,
     dayNum: dayNum, dayStr: dayStr, addDays: addDays, dow: dow, mdLabel: mdLabel, hm: hm, kstNow: kstNow, session: session, isTradingDay: isTradingDay,
     nextTradingDay: nextTradingDay, marketState: marketState, isLiveBar: isLiveBar, sma: sma, cleanRows: cleanRows, indicators: indicators, cutYears: cutYears,
-    backtest: backtest, stats: stats, holderView: holderView, signalText: signalText, analyze: analyze, sellLine: sellLine, trackTicker: trackTicker,
+    backtest: backtest, stats: stats, holderView: holderView, signalText: signalText, analyze: analyze, marketOk: marketOk, sellLine: sellLine, trackTicker: trackTicker,
     computeTrack: computeTrack, trendState: trendState, sectorBoard: sectorBoard, execCompare: execCompare, tickerFacts: tickerFacts, briefing: briefing,
     slotNow: slotNow, buyDistance: buyDistance, todoOpen: todoOpen, judge: judge, won: won, pct: pct };
   root.KRT = api;
