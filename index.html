@@ -56,6 +56,26 @@ button{cursor:pointer}
 .brief .cbs a{color:#aab3bf}
 .brief .cbd{margin:0 0 8px}
 .brief .cbd b{font-size:12px;color:var(--muted);font-weight:500}
+.rc{border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0;background:rgba(255,255,255,.015)}
+.rc header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.rc header div{flex:1;min-width:0}
+.rc header b{display:block;font-size:15px;color:var(--ink)}
+.rc header i{font-style:normal;font-size:11px;color:var(--muted)}
+.rg{flex:none;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-family:var(--font-mono);font-weight:700;font-size:14px;border:1px solid currentColor}
+.rg.gA{color:var(--up)} .rg.gB{color:var(--amber)} .rg.gC{color:var(--teal)}
+.rsp{width:88px;height:30px;flex:none}
+.rbar{position:relative;display:flex;height:8px;border-radius:4px;background:var(--line);margin:0 52px 10px 0;overflow:visible}
+.rbar span{display:block;height:100%}
+.rbar span:first-child{border-radius:4px 0 0 4px}
+.rbar em{position:absolute;right:-52px;top:-5px;font-style:normal;font-size:12px;font-family:var(--font-mono);color:var(--ink)}
+.rl{list-style:none;margin:0;padding:0}
+.rl li{border-bottom:1px solid var(--line)}
+.rrow{width:100%;display:flex;align-items:center;gap:10px;background:none;border:0;color:inherit;font:inherit;padding:9px 2px;text-align:left;cursor:pointer}
+.rrow .rn{flex:1;min-width:0;font-size:14px;color:var(--ink)}
+.rrow .rn i{display:block;font-style:normal;font-size:11px;color:var(--muted)}
+.rrow .rsp{width:64px;height:24px}
+.rrow .rs{font-family:var(--font-mono);font-size:13px;color:var(--ink);min-width:28px;text-align:right}
+.muted{color:var(--muted)}
 .brief .bn{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:7px;font-size:13px}
 .brief .bn b{font-size:12px;color:var(--muted);font-weight:500}
 .brief .bn a{color:var(--ink);text-decoration:none;line-height:1.45}
@@ -329,7 +349,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.7</div>
+    <div class="ver mono">v1.8</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -1039,7 +1059,49 @@ function drawCorp(){
   tagAt(T.max,'최고',C.up); tagAt(T.avg,'평균',C.core); tagAt(T.min,'최저',C.down);
   var now='현재 '+fmt(s.base); g.fillStyle=C.ink; g.fillRect(split-2,yn-9,g.measureText(now).width+12,18); g.fillStyle='#0b0f15'; g.fillText(now,split+4,yn);
 }
-function renderRec(){ $('rec').innerHTML='<div class="panel"><p class="hint" style="margin:0">추천 종목(조건 검색)은 시장 전체 종목 데이터가 필요해서 다음 단계에서 붙일 예정이에요. 지금은 섹터 탭에서 강한 섹터와 그 상위 종목을 볼 수 있어요.</p></div>'; }
+var REC=null;
+/* ── 추천 종목: 전 종목 스크리닝 결과 (규칙으로 고른 후보) ── */
+function recSpark(v, w, h){
+  w=w||88; h=h||30; if (!v || v.length<2) return '';
+  var mn=Math.min.apply(null,v), mx=Math.max.apply(null,v), up=v[v.length-1]>=v[0];
+  var pts=v.map(function(x,k){ return (k/(v.length-1)*w).toFixed(1)+','+(h-3-(x-mn)/(mx-mn||1)*(h-6)).toFixed(1); }).join(' ');
+  return '<svg class="rsp" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="'+(up?C.up:C.down)+'" stroke-width="1.5" points="'+pts+'"/></svg>';
+}
+function recName(code){ var x=(REC.items||[]).filter(function(y){ return y.code===code; })[0]; return x; }
+function renderRec(){
+  var el=$('rec'); if (!el) return;
+  if (!REC || !REC.items){ el.innerHTML='<div class="panel"><p class="hint" style="margin:0">추천 종목 결과가 아직 없어요. 평일 저녁 스크리닝이 끝나면 채워집니다.</p></div>'; return; }
+  var mine={}; ALL.forEach(function(s){ mine[s.code]=1; });                         // 내 종목·관심 종목(폰에서 옮긴 것 포함)은 숨김
+  var items=REC.items.filter(function(x){ return !mine[x.code]; }), picks=(REC.picks||[]).filter(function(c){ return !mine[c]; });
+  var md=function(d){ d=String(d); return d.slice(2,4)+'.'+d.slice(4,6)+'.'+d.slice(6,8); }, G={A:'실적·주가 함께 개선',B:'실적 개선, 주가 횡보',C:'업종 강함, 실적 확인 필요'};
+  var tmap={}; (REC.track||[]).forEach(function(t){ tmap[t.code]=t; });
+  var VC={add:'up',watch:'muted',drop:'down',moved:'muted'}, VN={add:'관심 추가 권장',watch:'계속 관찰',drop:'제외 권장',moved:'추적 끝'};
+  var card=function(x){ var f=x.f||{}, t=tmap[x.code];
+    return '<article class="rc"><header><span class="rg g'+x.grade+'">'+x.grade+'</span><div><b>'+esc(x.name)+'</b><i>'+x.code+' · '+esc(x.mkt)+(x.ind?' · '+esc(x.ind):'')+'</i></div>'+recSpark(x.spark)+'</header>'+
+      '<div class="rbar" title="실적 '+x.escore+'점 + 주가 '+x.pscore+'점"><span style="width:'+x.escore+'%;background:var(--blue)"></span><span style="width:'+x.pscore+'%;background:var(--accent)"></span><em>'+x.score+'점</em></div>'+
+      '<dl class="bl"><div><dt>실적</dt><dd>'+esc(x.ewhy)+'</dd></div><div><dt>주가</dt><dd>'+esc(x.pwhy)+' · 60일선과 '+pc(f.ext60||0)+', 20일 '+pc(f.r20||0)+'</dd></div>'+
+      (x.signals&&x.signals.length?'<div><dt>변화</dt><dd>'+x.signals.map(esc).join(' · ')+'</dd></div>':'')+
+      (t?'<div><dt>추적</dt><dd><span class="'+VC[t.verdict]+'">'+esc(t.vtext)+'</span></dd></div>':'')+'</dl></article>'; };
+  var st=state.recg||'A', list=items.filter(function(x){ return x.grade===st; });
+  var cnt=function(g){ return items.filter(function(x){ return x.grade===g; }).length; };
+  var rows=list.map(function(x,k){ var open=state.reco===x.code;
+    return '<li><button class="rrow" data-reco="'+x.code+'" aria-expanded="'+open+'"><span class="rn">'+esc(x.name)+'<i>'+(x.ind?esc(x.ind):x.mkt)+'</i></span>'+recSpark(x.spark,64,24)+'<span class="rs">'+x.score+'</span></button>'+(open?card(x):'')+'</li>'; }).join('');
+  var trk=(REC.track||[]).filter(function(t){ return !t.closed || t.verdict==='moved'; });
+  var trows=trk.map(function(t){ var sp=function(v){ return '<span class="'+(v>=0?'up':'down')+'">'+pc(v)+'</span>'; };
+    return '<tr><th>'+esc(t.name)+'<i>'+md(t.added)+' 추천 · '+t.days+'거래일</i></th><td>'+esc(t.grade||'')+'</td><td>'+sp(t.ret||0)+'</td><td>'+sp(t.rel||0)+'</td><td><span class="pill '+(t.verdict==='add'?'buy':t.verdict==='drop'?'trim':'wait')+'">'+VN[t.verdict]+'</span></td></tr>'; }).join('');
+  el.innerHTML='<div class="panel brief">'+
+    '<div class="bh"><span class="mood mix">'+(picks.length?'추천 '+picks.length:'추천 없음')+'</span><span>'+md(REC.asof)+' 종가 기준 · 국내 '+fmt(REC.universe||0)+'종목 중 실적·주가 변화가 막 시작된 종목</span></div>'+
+    (picks.length?picks.map(function(c){ var x=recName(c); return x?card(x):''; }).join(''):'<p class="hint">오늘은 조건에 맞는 종목이 없어요.</p>')+
+    '<p class="read" style="--c:var(--accent)"><b>읽는 법</b> 많이 오른 종목이 아니라, 오르기 전에 나타나는 변화가 잡힌 종목이에요. 막대의 파란 부분은 실적 점수(최대 50), 주황 부분은 주가 변화 점수(최대 50)입니다. '+
+    'A는 실적과 주가 추세가 함께 좋아지는 종목, B는 실적은 좋아지기 시작했는데 주가가 아직 옆걸음인 종목, C는 업종 흐름은 강한데 실적 확인이 더 필요한 종목이에요. '+
+    '이미 많이 오른 종목(과열 '+((REC.counts||{}).hot||0)+'개)과 실적이 나빠지는 종목, 금융업, 내 종목·관심 종목은 뺐습니다. 규칙으로 고른 후보일 뿐 매수 권유가 아니에요.</p></div>'+
+    '<div class="panel brief"><div class="sec-head" style="margin-bottom:8px"><h3>등급별 목록</h3><span class="hint">누르면 이유가 펼쳐져요</span></div>'+
+    '<div class="modes">'+['A','B','C'].map(function(g){ return '<button data-recg="'+g+'" aria-pressed="'+(g===st)+'">'+g+' '+cnt(g)+'</button>'; }).join('')+'</div>'+
+    '<p class="hint" style="margin:0 0 6px">'+G[st]+'</p>'+(rows?'<ul class="rl">'+rows+'</ul>':'<p class="hint">해당 종목이 없어요.</p>')+'</div>'+
+    '<div class="panel brief"><div class="sec-head" style="margin-bottom:6px"><h3>추천 추적 관찰</h3><span class="hint">매일 저녁 갱신</span></div>'+
+    (trows?'<table class="sc bk"><thead><tr><th></th><th>지금</th><th>수익률</th><th>코스피 대비</th><th>판정</th></tr></thead><tbody>'+trows+'</tbody></table>':'<p class="hint" style="margin:0">아직 추적 중인 종목이 없어요.</p>')+
+    '<p class="read" style="--c:var(--teal)"><b>판정 기준</b> 추천 후 10거래일 넘게 A·B등급을 지키고 60일선 위에서 코스피보다 강하면 <b>관심 추가 권장</b>, 과열·실적 악화로 바뀌거나 60일선을 3% 넘게 깨거나 20거래일 넘게 코스피보다 5%p 넘게 약하면 <b>제외 권장</b>, 그 사이는 <b>계속 관찰</b>이에요. 관심종목에 넣고 싶으시면 말씀해 주세요, 설정에 추가해 드려요.</p></div>';
+}
 
 
 /* ── 판단 그림: 자료가 역할로 흘러들고, 역할끼리 묻고 답한 뒤, 천천히 가운데로 모인다 ── */
@@ -1166,6 +1228,8 @@ document.addEventListener('click', function(e){
   var el=e.target.closest('button'); if(!el || !STOCKS.length) return;
   if (el.dataset.pick!=null){ $('pick').hidden=true; selectStock(+el.dataset.pick); setPage('b'); }
   else if (el.dataset.del!=null){ removeStock(+el.dataset.del); renderBrief(); renderBook(); }
+  else if (el.dataset.recg){ state.recg=el.dataset.recg; state.reco=null; renderRec(); }
+  else if (el.dataset.reco){ state.reco = state.reco===el.dataset.reco ? null : el.dataset.reco; renderRec(); }
   else if (el.dataset.book){ state.book=el.dataset.book; renderBook(); }
   else if (el.dataset.mode){ var ms=STOCKS[state.i]; if (ms.A[el.dataset.mode] && ms.mode!==el.dataset.mode){ ms.mode=el.dataset.mode; ms.a=ms.A[ms.mode]; if (!saved.modes) saved.modes={}; saved.modes[ms.code]=ms.mode; persist(); describe(ms); renderRows(); renderQuote(); renderTalk(); renderDetail(); renderPlan(); renderBrief(); renderBook(); toast(ms.name+' 신호를 '+MODES[ms.mode].name+'으로 바꿨어요.'); } }
   else if (el.classList.contains('edit-btn')){ state.edit=!state.edit; each('.edit-btn', function(b){ b.textContent=state.edit?'완료':'편집'; b.setAttribute('aria-pressed',state.edit); }); $('reset-btn').hidden=!state.edit; renderRows(); }
@@ -1195,7 +1259,8 @@ function setNotes(){
   $('notice').textContent = reduce ? NOTES[0] : NOTES[noteI%NOTES.length];
 }
 function loadAll(){
-  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; })]).then(function(r){
+  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; }), getJSON('screen/result.json').catch(function(){ return null; })]).then(function(r){
+    REC = r[8] && r[8].items ? r[8] : null;
     BRIEF = r[6] && r[6].headline ? r[6] : null; TRADE = r[7] && r[7].slots ? r[7] : null;
     MARKET=r[1]; SECTORS=r[2]; META=r[3]; FINP=(r[4]&&r[4].items)||{}; buildBoard();
     MKTOK = r[5]&&r[5].rows&&r[5].rows.length>80 ? KRT.marketOk(r[5].rows.map(function(x){ return [ymd(x[0]), x[1]]; })) : null;
@@ -1204,7 +1269,8 @@ function loadAll(){
     var cur=STOCKS.length ? STOCKS[state.i].code : null; cache={};
     ALL=pairs.map(function(p,i){ return buildStock(p[0],p[1],i); }); buildList();
     var i=0; STOCKS.forEach(function(s,k){ if (s.code===cur) i=k; });
-    if (!started){ started=true; renderRec(); renderMarket(); renderSect(); selectStock(i); if (window.innerWidth>=700) setSide(true); if (!reduce) requestAnimationFrame(loop); }
+    renderRec();
+    if (!started){ started=true; renderMarket(); renderSect(); selectStock(i); if (window.innerWidth>=700) setSide(true); if (!reduce) requestAnimationFrame(loop); }
     else { state.i=i; renderRows(); renderQuote(); renderTalk(); renderDetail(); renderPlan(); renderTab(); renderMarket(); renderSect(); }
     setNotes();
   }).catch(function(err){ $('notice').textContent='데이터를 불러오지 못했어요. 잠시 뒤 다시 시도합니다. ('+err.message+')'; });

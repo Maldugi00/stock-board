@@ -383,6 +383,68 @@ def grade_all(items, prices, mkt, names, exclude):
     return out, excl, feats
 
 
+# ───────────────────────── R-3: 추천 종목 추적 관찰 ─────────────────────────
+def track(picks, graded, excl, items, feats, mkt, exclude, asof):
+    """추천했던 종목을 날마다 다시 보고 '관심종목 추가 권장 / 계속 관찰 / 추천에서 제외 권장'을 붙인다."""
+    tr = c.load("screen/track.json", {"items": {}})
+    T = tr["items"]
+    gmap = {y["code"]: y for y in graded}
+    hmap = {h["code"]: h for h in excl}
+    emap = {x["code"]: x for x in items}
+    m_now = mkt.get(asof)
+    for code in picks:
+        if code not in T and feats.get(code):
+            y = gmap[code]
+            T[code] = {"code": code, "name": y["name"], "added": asof, "grade0": y["grade"], "close0": feats[code]["close"], "mkt0": m_now, "log": []}
+    for code, t in T.items():
+        if t.get("closed"):
+            continue
+        if code in exclude:                                    # 내 종목·관심 종목으로 옮겨짐 → 추적 끝
+            t.update(closed=asof, verdict="moved", vtext="관심·내 종목으로 옮겨져 추적을 마쳤어요")
+            continue
+        f = feats.get(code)
+        if not f:
+            continue
+        grade = gmap[code]["grade"] if code in gmap else "과열" if code in hmap else \
+            "실적 악화" if emap.get(code, {}).get("cls") == "down" else "해당 없음"
+        if not t["log"] or t["log"][-1][0] != asof:
+            t["log"].append([asof, grade, f["close"]])
+        t["log"] = t["log"][-80:]
+        days = len(t["log"]) - 1
+        ret = f["close"] / t["close0"] - 1
+        mret = (m_now / t["mkt0"] - 1) if (m_now and t.get("mkt0")) else 0
+        rel = ret - mret
+        why = []
+        if grade in ("과열", "실적 악화"):
+            why.append("과열로 바뀜" if grade == "과열" else "실적이 악화로 바뀜")
+        if f["close"] < f["ma60"] * 0.97:
+            why.append("60일선을 3% 넘게 깨고 내려감")
+        if days >= 20 and rel < -0.05:
+            why.append(f"추천 후 {days}거래일 동안 코스피보다 {rel * 100:.0f}%p 약함")
+        if why:
+            verdict, vtext = "drop", "추천에서 제외 권장: " + ", ".join(why)
+            t.setdefault("drop_since", asof)
+        elif days >= 10 and grade in ("A", "B") and f["close"] > f["ma60"] and rel > 0:
+            verdict, vtext = "add", f"관심종목 추가 권장: {days}거래일째 {grade}등급 유지, 60일선 위, 코스피보다 {rel * 100:+.0f}%p"
+            t.pop("drop_since", None)
+        else:
+            left = max(0, 10 - days)
+            verdict = "watch"
+            vtext = "계속 관찰: " + (f"추천 {days}거래일째, 판단까지 {left}거래일 더 지켜봐요" if left else
+                                   f"지금 {grade}" + (", 코스피보다 약함" if rel <= 0 else "") + (", 60일선 아래" if f["close"] <= f["ma60"] else ""))
+            t.pop("drop_since", None)
+        t.update(grade=grade, days=days, ret=round(ret, 4), mret=round(mret, 4), rel=round(rel, 4), verdict=verdict, vtext=vtext)
+        if verdict == "drop" and t.get("drop_since") and sum(1 for e in t["log"] if e[0] >= t["drop_since"]) > 10:
+            t["closed"] = asof                                 # 제외 권장이 10거래일 넘게 이어지면 추적 끝
+    # 끝난 지 오래된 기록은 정리 (최근 30개만)
+    done = sorted([x for x in T.values() if x.get("closed")], key=lambda x: str(x["closed"]))[:-30]
+    for x in done:
+        T.pop(x["code"], None)
+    c.save("screen/track.json", tr)
+    rows = sorted(T.values(), key=lambda x: (bool(x.get("closed")), str(x.get("added"))), reverse=False)
+    return [{k: v for k, v in x.items() if k != "log"} | {"spark": [e[2] for e in x["log"]][-40:]} for x in rows]
+
+
 def main():
     if not c.DART_KEY:
         print("DART_API_KEY 가 없습니다.")
@@ -428,7 +490,9 @@ def main():
         print("한투 토큰을 받지 못해 주가 판정을 건너뜁니다.")
         return 0
     k = c.Kis(t)
-    prices, fresh = price_data(k, [x["code"] for x in cands], START + PX_MIN * 60)
+    tracked = [code for code, t in c.load("screen/track.json", {"items": {}})["items"].items() if not t.get("closed") and code not in exclude]
+    fetch = [x["code"] for x in cands] + [code for code in tracked if code not in {x["code"] for x in cands}]
+    prices, fresh = price_data(k, fetch, START + PX_MIN * 60)
     if missing:
         print(f"일봉: {len(prices)}종목 보유 (이번에 받은 것 {fresh}). 실적이 다 모이면 등급을 매깁니다.")
         return 0
@@ -443,8 +507,10 @@ def main():
     picks = [y["code"] for y in graded if y["grade"] == "A"][:3]
     if len(picks) < 3:
         picks += [y["code"] for y in graded if y["grade"] == "B"][:3 - len(picks)]
-    asof = max((f2["date"] for f2 in feats.values() if f2), default=None)
-    c.save("screen/result.json", {"updated": c.NOW.strftime("%Y-%m-%d %H:%M"), "asof": asof, "latest_q": latest, "universe": len(uni),
+    ds = [f2["date"] for f2 in feats.values() if f2]
+    asof = max(set(ds), key=ds.count) if ds else None          # 가장 많은 종목의 마지막 날짜 = 기준일
+    trk = track(picks, graded, excl, items, feats, mkt, exclude, asof) if asof else []
+    c.save("screen/result.json", {"track": trk, "updated": c.NOW.strftime("%Y-%m-%d %H:%M"), "asof": asof, "latest_q": latest, "universe": len(uni),
                                   "priced": len(prices), "counts": dict(cnt, hot=len(excl)), "picks": picks, "exclude_mine": sorted(exclude),
                                   "items": graded, "hot": excl[:40]})
     hist = c.load("screen/history.json", {})
