@@ -25,9 +25,9 @@ OUT = "screen/earnings.json"
 
 KOSPI_W = [2, 1, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9, 5, 5, 1, 1, 1, 2, 1, 1,
            1, 2, 2, 2, 3, 1, 3, 12, 12, 8, 15, 21, 2, 7, 1, 1, 1, 1, 1, 9, 9, 9, 5, 9, 8, 9, 3, 1, 1, 1]
-KOSPI_F = {"group": 0, "spac": 19, "bank": 18, "sec": 26, "ins": 28, "halt": 34, "liq": 35, "admin": 36, "settle": 52, "pref": 54, "cap": 65}
+KOSPI_F = {"ind1": 2, "ind2": 3, "group": 0, "spac": 19, "bank": 18, "sec": 26, "ins": 28, "halt": 34, "liq": 35, "admin": 36, "settle": 52, "pref": 54, "cap": 65}
 KOSDAQ_W = [2, 1, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9, 5, 5, 1, 1, 1, 2, 1, 1, 1, 2, 2, 2, 3, 1, 3, 12, 12, 8, 15, 21, 2, 7, 1, 1, 1, 1, 9, 9, 9, 5, 9, 8, 9, 3, 1, 1, 1]
-KOSDAQ_F = {"group": 0, "spac": 14, "bank": 13, "sec": 21, "ins": 23, "halt": 29, "liq": 30, "admin": 31, "settle": 47, "pref": 49, "cap": 59}
+KOSDAQ_F = {"ind1": 2, "ind2": 3, "group": 0, "spac": 14, "bank": 13, "sec": 21, "ins": 23, "halt": 29, "liq": 30, "admin": 31, "settle": 47, "pref": 49, "cap": 59}
 
 
 def split(s, widths):
@@ -56,8 +56,23 @@ def master(mkt):
         rows.append({"code": code, "name": name, "mkt": "코스피" if mkt == "kospi" else "코스닥", "group": g("group"),
                      "spac": g("spac") == "Y", "fin": "Y" in (g("bank"), g("sec"), g("ins")), "halt": g("halt") == "Y",
                      "liq": g("liq") == "Y", "admin": g("admin") == "Y", "settle": g("settle"), "pref": g("pref"),
-                     "cap": c.num(g("cap"), int)})
+                     "cap": c.num(g("cap"), int), "ind": ("P" if mkt == "kospi" else "Q") + (g("ind2") if g("ind2") not in ("", "0000") else g("ind1"))})
     return rows
+
+
+def industry_names():
+    """업종 코드 → 이름 (못 받으면 빈 표)"""
+    try:
+        with urllib.request.urlopen("https://new.real.download.dws.co.kr/common/master/idxcode.mst.zip", timeout=60) as r:
+            z = zipfile.ZipFile(io.BytesIO(r.read()))
+        out = {}
+        for row in z.read(z.namelist()[0]).decode("cp949", errors="replace").splitlines():
+            if len(row) > 5:
+                mk = "Q" if row[0] == "2" else "P"
+                out[mk + row[1:5]] = row[5:45].strip() or row[3:43].strip()
+        return out
+    except Exception:
+        return {}
 
 
 def universe():
@@ -208,6 +223,162 @@ def judge(qs):
     return "watch", "뚜렷한 개선·악화 없음 (실적 확인 필요)", 0, det
 
 
+# ───────────────────────── R-2: 주가 판정 ─────────────────────────
+PX = "state/screen_px.json"
+WIN_FULL = ((140, 0), (280, 141), (420, 281))      # 약 1년 반 (120일선과 1년 상대강도에 충분)
+
+
+def sma(a, n, i):
+    return sum(a[i - n + 1:i + 1]) / n if i >= n - 1 else None
+
+
+def price_data(k, codes, budget_end):
+    """후보 종목 일봉 (날짜, 고가, 저가, 종가, 거래량). 받아 둔 것은 최근 구간만 이어 받는다."""
+    px = c.load(PX, {})
+    fresh = 0
+    for code in codes:
+        if time.time() > budget_end:
+            print("시간 제한으로 일봉 받기를 멈춥니다. 다음 실행에서 이어 받습니다.", flush=True)
+            break
+        ent = px.get(code) or {}
+        rows = ent.get("rows") or []
+        if c.EPOCH - ent.get("ts", 0) < 10 * 3600 and rows:
+            continue
+        full = len(rows) < 200 or c.EPOCH - ent.get("full", 0) > 30 * 86400
+        got = c.daily(k, code, windows=WIN_FULL if full else ((30, 0),))
+        if not got:
+            continue
+        new = [[r[0], r[2], r[3], r[4], r[5]] for r in got]
+        if not full:
+            old = {r[0]: r for r in rows}
+            # 겹치는 날의 종가가 1% 넘게 다르면 수정주가가 바뀐 것(분할 등) → 다음에 전체를 다시 받는다
+            bad = any(abs(old[r[0]][3] - r[3]) > 0.01 * r[3] for r in new if r[0] in old and r[3])
+            if bad:
+                ent["full"] = 0
+            old.update({r[0]: r for r in new})
+            new = [old[d] for d in sorted(old)]
+        else:
+            ent["full"] = c.EPOCH
+        ent["rows"], ent["ts"] = new[-400:], c.EPOCH
+        px[code] = ent
+        fresh += 1
+    keep = set(codes)
+    c.save(PX, {k2: v for k2, v in px.items() if k2 in keep})
+    return {code: px[code]["rows"] for code in codes if code in px}, fresh
+
+
+def features(rows, mkt):
+    """일봉 → 변화 신호. rows: [날짜, 고, 저, 종, 거래량], mkt: {날짜: 시장 종가}"""
+    if len(rows) < 130:
+        return None
+    d = [r[0] for r in rows]; h = [r[1] for r in rows]; l = [r[2] for r in rows]; cl = [r[3] for r in rows]; v = [r[4] for r in rows]
+    t = len(rows) - 1
+    ma20, ma60, ma120 = sma(cl, 20, t), sma(cl, 60, t), sma(cl, 120, t)
+    ma60_10, ma60_20 = sma(cl, 60, t - 10), sma(cl, 60, t - 20)
+    slope = ma60 / ma60_10 - 1
+    slope_prev = ma60_10 / ma60_20 - 1
+    cross = next((t - i for i in range(t, t - 20, -1) if sma(cl, 20, i) > sma(cl, 60, i) and sma(cl, 20, i - 1) <= sma(cl, 60, i - 1)), None)
+    r20, r60 = cl[t] / cl[t - 20] - 1, cl[t] / cl[t - 60] - 1
+    ext60 = cl[t] / ma60 - 1
+    hi60, lo60 = max(h[t - 59:t + 1]), min(l[t - 59:t + 1])
+    range60 = hi60 / lo60 - 1
+    tr = [max(h[i] - l[i], abs(h[i] - cl[i - 1]), abs(l[i] - cl[i - 1])) / cl[i - 1] for i in range(1, t + 1)]
+    atr_now = sum(tr[-20:]) / 20
+    atr_then = sum(tr[-120:-60]) / 60
+    vc = atr_now / atr_then if atr_then else 1
+    g = [max(cl[i] - cl[i - 1], 0) for i in range(t - 13, t + 1)]; ls = [max(cl[i - 1] - cl[i], 0) for i in range(t - 13, t + 1)]
+    rsi = 100 - 100 / (1 + (sum(g) / sum(ls))) if sum(ls) else 100
+    upv = sum(v[i] for i in range(t - 19, t + 1) if cl[i] > cl[i - 1]); dnv = sum(v[i] for i in range(t - 19, t + 1) if cl[i] < cl[i - 1])
+    acc = upv / dnv if dnv else 2
+    val20 = sum(cl[i] * v[i] for i in range(t - 19, t + 1)) / 20 / 1e8          # 하루 평균 거래대금(억)
+    rs = rs_prev = None
+    if d[t] in mkt and d[t - 60] in mkt and d[t - 20] in mkt and d[t - 80] in mkt:
+        rs = (cl[t] / cl[t - 60]) / (mkt[d[t]] / mkt[d[t - 60]])
+        rs_prev = (cl[t - 20] / cl[t - 80]) / (mkt[d[t - 20]] / mkt[d[t - 80]])
+    return {"date": d[t], "close": cl[t], "ma20": ma20, "ma60": ma60, "ma120": ma120, "slope": slope, "slope_prev": slope_prev, "cross": cross,
+            "r20": r20, "r60": r60, "ext60": ext60, "range60": range60, "vc": vc, "rsi": rsi, "acc": acc, "val20": val20,
+            "rs": rs, "rs_up": (rs is not None and rs_prev is not None and rs > rs_prev), "spark": cl[-120:]}
+
+
+def price_state(f):
+    """→ (상태, 이유)  상태: hot(과열) / early(상승 초기) / base(횡보·바닥) / down(하락) / other"""
+    if f["r20"] > 0.30 or f["ext60"] > 0.40 or f["r60"] > 0.80 or f["rsi"] > 75:
+        why = ("20일 " + f"{f['r20'] * 100:+.0f}%") if f["r20"] > 0.30 else ("60일선보다 " + f"{f['ext60'] * 100:+.0f}% 위") if f["ext60"] > 0.40 else \
+              ("60일 " + f"{f['r60'] * 100:+.0f}%") if f["r60"] > 0.80 else f"RSI {f['rsi']:.0f}"
+        return "hot", "이미 많이 오름 (" + why + ")"
+    up_turn = f["slope"] > 0 and (f["slope_prev"] <= 0.01 or (f["cross"] is not None))
+    if f["close"] > f["ma60"] and f["ma20"] > f["ma60"] and up_turn and f["ext60"] <= 0.20:
+        return "early", ("60일선이 막 위로 돌아섬" if f["slope_prev"] <= 0.01 else f"20일선이 60일선을 {f['cross']}일 전 상향 돌파")
+    if f["range60"] <= 0.25 and abs(f["slope"]) <= 0.02 and f["close"] >= f["ma120"] * 0.85:
+        return "base", f"60일 동안 {f['range60'] * 100:.0f}% 범위에서 옆걸음"
+    if f["close"] < f["ma60"] and f["slope"] < 0:
+        return "down", "60일선 아래에서 내려가는 중"
+    return "other", "뚜렷한 자리 없음"
+
+
+def price_score(f, st):
+    """오르기 전에 나타나는 변화에 점수 (0~50)"""
+    sig, sc = [], 0
+    if st == "early":
+        sc += 12; sig.append("추세 전환 시작")
+    if f["rs_up"]:
+        sc += 10; sig.append("시장 대비 상대강도 개선")
+    if f["vc"] < 0.8:
+        sc += 10; sig.append(f"출렁임 축소 ({f['vc']:.2f}배)")
+    if f["acc"] > 1.3 and f["r20"] < 0.10:
+        sc += 10; sig.append("주가는 제자리인데 오르는 날 거래가 많음 (매집 흔적)")
+    sc += max(0, 8 - int(max(f["ext60"], 0) * 40))          # 60일선에 가까울수록 (덜 오른 상태일수록) 가점
+    return min(50, sc), sig
+
+
+def grade_all(items, prices, mkt, names, exclude):
+    feats = {code: features(rows, mkt) for code, rows in prices.items()}
+    # 업종 흐름: 같은 업종 안에서 실적 개선 비율과 상대강도 중간값
+    groups = {}
+    for x in items:
+        groups.setdefault(x.get("ind"), []).append(x)
+    ind_ok = {}
+    for key, xs in groups.items():
+        known = [x for x in xs if x["cls"] != "nodata"]
+        share = sum(1 for x in known if x["cls"] in ("up", "start")) / len(known) if known else 0
+        rss = sorted(feats[x["code"]]["rs"] for x in xs if feats.get(x["code"]) and feats[x["code"]]["rs"] is not None)
+        med = rss[len(rss) // 2] if rss else None
+        ind_ok[key] = {"share": share, "rs": med, "n": len(xs), "strong": len(known) >= 3 and share >= 0.4 and (med or 0) > 1.0,
+                       "name": names.get(key, key)}
+    out, excl = [], []
+    for x in items:
+        if x["code"] in exclude:
+            continue
+        if x["cls"] == "down":
+            continue
+        f = feats.get(x["code"])
+        if not f or f["val20"] < 10:                        # 일봉 부족·거래대금 하루 10억 미만은 판정하지 않음
+            continue
+        st, pwhy = price_state(f)
+        ind = ind_ok.get(x.get("ind"), {})
+        grade = None
+        if st == "hot":
+            excl.append({"code": x["code"], "name": x["name"], "why": pwhy, "ewhy": x["why"]})
+            continue
+        if x["cls"] in ("up", "start") and st == "early":
+            grade = "A"
+        elif x["cls"] in ("up", "start") and st == "base":
+            grade = "B"
+        elif x["cls"] == "watch" and ind.get("strong") and st in ("early", "base"):
+            grade = "C"
+        if not grade:
+            continue
+        ps, sig = price_score(f, st)
+        out.append({"code": x["code"], "name": x["name"], "mkt": x["mkt"], "cap": x["cap"], "grade": grade, "score": x["score"] + ps,
+                    "escore": x["score"], "pscore": ps, "ecls": x["cls"], "ewhy": x["why"], "pstate": st, "pwhy": pwhy, "signals": sig,
+                    "ind": ind.get("name"), "ind_share": round(ind.get("share", 0), 2),
+                    "q": x["q"], "op": x["op"], "rev": x["rev"],
+                    "f": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in f.items() if k != "spark"}, "spark": f["spark"]})
+    order = {"A": 0, "B": 1, "C": 2}
+    out.sort(key=lambda y: (order[y["grade"]], -y["score"]))
+    return out, excl, feats
+
+
 def main():
     if not c.DART_KEY:
         print("DART_API_KEY 가 없습니다.")
@@ -231,7 +402,7 @@ def main():
         qs = quarters(rep.get(corp, {})) if corp else []
         cls, why_, score, det = judge(qs)
         counts[cls] = counts.get(cls, 0) + 1
-        items.append({"code": r["code"], "name": r["name"], "mkt": r["mkt"], "cap": r["cap"], "cls": cls, "why": why_, "score": score,
+        items.append({"code": r["code"], "name": r["name"], "mkt": r["mkt"], "cap": r["cap"], "ind": r.get("ind"), "cls": cls, "why": why_, "score": score,
                       "q": [x[0] for x in qs[-6:]], "rev": [x[1] for x in qs[-6:]], "op": [x[2] for x in qs[-6:]],
                       "det": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in det.items()}})
     items.sort(key=lambda x: (-x["score"], -x["cap"]))
@@ -240,6 +411,41 @@ def main():
                  "counts": counts, "items": items})
     if SLOW:
         print(f"전자공시 평균 {sum(SLOW) / len(SLOW):.1f}초, 최장 {max(SLOW):.1f}초")
+    # ── R-2 ──
+    cfg = json.load(open(c.CONFIG, encoding="utf-8"))
+    exclude = {s2["code"] for s2 in cfg.get("stocks", [])}           # 내 종목·관심 종목은 추천에서 뺀다
+    cands = [x for x in items if x["cls"] in ("up", "start", "watch") and x["code"] not in exclude]
+    cands.sort(key=lambda x: -x["cap"])
+    t = c.read_token() or c.issue_token()
+    if not t:
+        print("한투 토큰을 받지 못해 주가 판정을 건너뜁니다.")
+        return 0
+    k = c.Kis(t)
+    prices, fresh = price_data(k, [x["code"] for x in cands], START + 75 * 60)
+    try:
+        md = json.load(open(os.path.join(c.ROOT, "market_daily.json"), encoding="utf-8"))
+        mkt = {r[0]: r[1] for r in md.get("rows", [])}
+    except (OSError, ValueError):
+        mkt = {}
+    names = industry_names()
+    graded, excl, feats = grade_all(items, prices, mkt, names, exclude)
+    cnt = {g2: sum(1 for y in graded if y["grade"] == g2) for g2 in "ABC"}
+    picks = [y["code"] for y in graded if y["grade"] == "A"][:3]
+    if len(picks) < 3:
+        picks += [y["code"] for y in graded if y["grade"] == "B"][:3 - len(picks)]
+    asof = max((f2["date"] for f2 in feats.values() if f2), default=None)
+    c.save("screen/result.json", {"updated": c.NOW.strftime("%Y-%m-%d %H:%M"), "asof": asof, "latest_q": latest, "universe": len(uni),
+                                  "priced": len(prices), "counts": dict(cnt, hot=len(excl)), "picks": picks, "exclude_mine": sorted(exclude),
+                                  "items": graded, "hot": excl[:40]})
+    hist = c.load("screen/history.json", {})
+    if asof:
+        hist[str(asof)] = picks
+    c.save("screen/history.json", dict(sorted(hist.items())[-120:]))
+    print(f"일봉: 후보 {len(cands)}종목 중 {len(prices)}종목 보유 (이번에 받은 것 {fresh}), 한투 호출 {k.calls}회, 오류 {len(k.errors)}건")
+    print(f"등급: A {cnt['A']} · B {cnt['B']} · C {cnt['C']} · 과열 제외 {len(excl)}  기준일 {asof}")
+    for y in graded[:12]:
+        print(f"  [{y['grade']}] {y['name']}({y['code']}) {y['score']}점 — {y['ewhy']} / {y['pwhy']} / {', '.join(y['signals'])}")
+    print("추천:", [next(y['name'] for y in graded if y['code'] == p2) for p2 in picks])
     print(f"전자공시 호출 {calls}회, 오류 {len(c.DART_ERR)}건 {c.DART_ERR[:3]}")
     print("실적 분류:", {"up": "개선 중", "start": "개선 시작", "watch": "확인 필요", "down": "악화", "nodata": "자료 부족"} and counts)
     for x in items[:15]:
