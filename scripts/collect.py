@@ -355,7 +355,7 @@ def main():
 
     # 섹터: 대표 ETF의 일봉 종가
     old = load("sectors.json", {})
-    if EPOCH - old.get("ts", 0) >= 30 * 60 or not old.get("sectors"):
+    if EPOCH - old.get("ts", 0) >= 30 * 60 or not old.get("sectors") or any("parts" not in s for s in old["sectors"]):
         out = []
         had = {s["code"]: s.get("parts") for s in old.get("sectors", [])}
         parts_old = EPOCH - old.get("parts_ts", 0) >= 6 * 3600          # 구성 종목은 6시간마다만 다시 받는다
