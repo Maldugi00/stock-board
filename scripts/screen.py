@@ -68,8 +68,7 @@ def industry_names():
         out = {}
         for row in z.read(z.namelist()[0]).decode("cp949", errors="replace").splitlines():
             if len(row) > 5:
-                mk = "Q" if row[0] == "2" else "P"
-                out[mk + row[1:5]] = row[5:45].strip() or row[3:43].strip()
+                out[row[1:5]] = row[5:45].strip() or row[3:43].strip()      # 코스피 00xx, 코스닥 10xx 로 겹치지 않음
         return out
     except Exception:
         return {}
@@ -310,7 +309,7 @@ def price_state(f):
               ("60일 " + f"{f['r60'] * 100:+.0f}%") if f["r60"] > 0.80 else f"RSI {f['rsi']:.0f}"
         return "hot", "이미 많이 오름 (" + why + ")"
     up_turn = f["slope"] > 0 and (f["slope_prev"] <= 0.01 or (f["cross"] is not None))
-    if f["close"] > f["ma60"] and f["ma20"] > f["ma60"] and up_turn and f["ext60"] <= 0.20:
+    if f["close"] > f["ma60"] and f["ma20"] > f["ma60"] and up_turn and f["ext60"] <= 0.20 and f["r20"] <= 0.20:
         return "early", ("60일선이 막 위로 돌아섬" if f["slope_prev"] <= 0.01 else f"20일선이 60일선을 {f['cross']}일 전 상향 돌파")
     if f["range60"] <= 0.25 and abs(f["slope"]) <= 0.02 and f["close"] >= f["ma120"] * 0.85:
         return "base", f"60일 동안 {f['range60'] * 100:.0f}% 범위에서 옆걸음"
@@ -347,13 +346,15 @@ def grade_all(items, prices, mkt, names, exclude):
         rss = sorted(feats[x["code"]]["rs"] for x in xs if feats.get(x["code"]) and feats[x["code"]]["rs"] is not None)
         med = rss[len(rss) // 2] if rss else None
         ind_ok[key] = {"share": share, "rs": med, "n": len(xs), "strong": len(known) >= 3 and share >= 0.4 and (med or 0) > 1.0,
-                       "name": names.get(key, key)}
+                       "name": names.get((key or "")[1:]) or "업종 미분류"}
     out, excl = [], []
     for x in items:
         if x["code"] in exclude:
             continue
         if x["cls"] == "down":
             continue
+        if any(w in ind_ok.get(x.get("ind"), {}).get("name", "") for w in ("금융", "은행", "증권", "보험")):
+            continue                                        # 금융업(은행·지주사 포함)은 영업이익 구조가 달라 판정하지 않음
         f = feats.get(x["code"])
         if not f or f["val20"] < 10:                        # 일봉 부족·거래대금 하루 10억 미만은 판정하지 않음
             continue
