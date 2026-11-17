@@ -31,7 +31,7 @@ jobs:
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           DATA_DIR: data
-        run: python3 scripts/screen.py
+        run: python3 -u scripts/screen.py
       - name: 데이터 가지에 저장
         env:
           GH_TOKEN: ${{ github.token }}

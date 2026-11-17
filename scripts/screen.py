@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import urllib.request
+import time
 import zipfile
 
 import collect as c
@@ -99,6 +100,10 @@ def pick(rows):
     return None
 
 
+START = time.time()
+SLOW = []
+
+
 def fetch_all(corps):
     """{corp: {(y,'1Q'): {rev, op}, ...}}  — 보고서 하나당 100개씩 묶어서 부른다."""
     data, calls = {}, 0
@@ -108,8 +113,16 @@ def fetch_all(corps):
             continue
         got = 0
         for i in range(0, len(ids), 100):
+            t0 = time.time()
             rows = c.dart("fnlttMultiAcnt.json", {"corp_code": ",".join(ids[i:i + 100]), "bsns_year": str(y), "reprt_code": code})
             calls += 1
+            dt = time.time() - t0
+            SLOW.append(dt)
+            if calls <= 3 or dt > 10:
+                print(f"  전자공시 {y}.{q} 묶음 {i // 100 + 1}: {dt:.1f}초, {'성공' if rows is not None else '없음/실패'} {len(rows or [])}행", flush=True)
+            if time.time() - START > 25 * 60:
+                print("시간 초과(25분)로 실적 수집을 멈춥니다.", flush=True)
+                return data, calls
             by = {}
             for r in rows or []:
                 by.setdefault(r.get("corp_code"), []).append(r)
@@ -190,13 +203,17 @@ def main():
     if not c.DART_KEY:
         print("DART_API_KEY 가 없습니다.")
         return 1
+    t0 = time.time()
     try:
         uni, total, why = universe()
+        print(f"전체 종목 파일 {time.time() - t0:.1f}초", flush=True)
     except Exception as e:
         print("전체 종목 파일을 받지 못했습니다:", type(e).__name__, e)
         return 1
     print(f"전체 {total}종목 → 기본 거르기 후 {len(uni)}종목  (제외: {why})")
+    t0 = time.time()
     cmap = c.corp_map()
+    print(f"고유번호 표 {len(cmap)}개, {time.time() - t0:.1f}초", flush=True)
     corp_of = {r["code"]: cmap.get(r["code"]) for r in uni}
     rep, calls = fetch_all([v for v in corp_of.values() if v])
     items, counts = [], {}
@@ -212,6 +229,8 @@ def main():
     latest = max((x["q"][-1] for x in items if x["q"]), default=None)
     c.save(OUT, {"updated": c.NOW.strftime("%Y-%m-%d %H:%M"), "latest_q": latest, "total": total, "universe": len(uni), "excluded": why,
                  "counts": counts, "items": items})
+    if SLOW:
+        print(f"전자공시 평균 {sum(SLOW) / len(SLOW):.1f}초, 최장 {max(SLOW):.1f}초")
     print(f"전자공시 호출 {calls}회, 오류 {len(c.DART_ERR)}건 {c.DART_ERR[:3]}")
     print("실적 분류:", {"up": "개선 중", "start": "개선 시작", "watch": "확인 필요", "down": "악화", "nodata": "자료 부족"} and counts)
     for x in items[:15]:
