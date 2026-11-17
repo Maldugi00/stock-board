@@ -105,34 +105,43 @@ SLOW = []
 
 
 def fetch_all(corps):
-    """{corp: {(y,'1Q'): {rev, op}, ...}}  — 보고서 하나당 100개씩 묶어서 부른다."""
+    """{corp: {(y,'1Q'): {rev, op}}}. 지난 보고서는 바뀌지 않으니 받아 둔 것을 다시 쓰고,
+    아직 못 받은 회사와 최근 2개 보고서의 '자료 없음' 회사(늦은 공시)만 하루 한 번 다시 묻는다."""
+    cache = c.load("state/dart_q.json", {})
     data, calls = {}, 0
     ids = sorted(set(corps))
-    for y, code, q in periods():
-        if (y, q) > (c.NOW.year, "4Q") or (y == c.NOW.year and q == "4Q"):
-            continue
-        got = 0
-        for i in range(0, len(ids), 100):
-            t0 = time.time()
-            rows = c.dart("fnlttMultiAcnt.json", {"corp_code": ",".join(ids[i:i + 100]), "bsns_year": str(y), "reprt_code": code})
-            calls += 1
-            dt = time.time() - t0
-            SLOW.append(dt)
-            if calls <= 3 or dt > 10:
-                print(f"  전자공시 {y}.{q} 묶음 {i // 100 + 1}: {dt:.1f}초, {'성공' if rows is not None else '없음/실패'} {len(rows or [])}행", flush=True)
+    plist = [(y, code, q) for y, code, q in periods() if not (y == c.NOW.year and q == "4Q")]
+    recent = {f"{y}{q}" for y, _, q in plist[-2:]}
+    for y, code, q in plist:
+        key = f"{y}{q}"
+        ent = cache.setdefault(key, {"asked": {}, "data": {}})
+        retry = key in recent and c.EPOCH - ent.get("ts", 0) > 20 * 3600
+        need = [x for x in ids if x not in ent["asked"] or (retry and x not in ent["data"])]
+        for i in range(0, len(need), 100):
             if time.time() - START > 25 * 60:
-                print("시간 초과(25분)로 실적 수집을 멈춥니다.", flush=True)
-                return data, calls
+                print("시간 초과(25분)로 실적 수집을 멈춥니다. 다음 실행에서 이어 받습니다.", flush=True)
+                break
+            part = need[i:i + 100]
+            t0, ne = time.time(), len(c.DART_ERR)
+            rows = c.dart("fnlttMultiAcnt.json", {"corp_code": ",".join(part), "bsns_year": str(y), "reprt_code": code})
+            calls += 1
+            SLOW.append(time.time() - t0)
+            if rows is None and len(c.DART_ERR) > ne:
+                continue                                 # 실패한 묶음은 묻지 않은 것으로 남겨 다음에 다시
             by = {}
             for r in rows or []:
                 by.setdefault(r.get("corp_code"), []).append(r)
-            for corp, rs in by.items():
-                acc = pick(rs)
+            for corp in part:
+                ent["asked"][corp] = 1
+                acc = pick(by.get(corp, []))
                 if acc:
-                    data.setdefault(corp, {})[(y, q)] = acc
-                    got += 1
-        if not got and y == c.NOW.year:
-            pass                                        # 아직 공시되지 않은 보고서
+                    ent["data"][corp] = [acc["rev"], acc["op"]]
+        if need:
+            ent["ts"] = c.EPOCH
+        for corp, (rev, op) in ent["data"].items():
+            data.setdefault(corp, {})[(y, q)] = {"rev": rev, "op": op}
+    keep = {f"{y}{q}" for y, _, q in plist}
+    c.save("state/dart_q.json", {k: v for k, v in cache.items() if k in keep})
     return data, calls
 
 
