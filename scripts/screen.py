@@ -116,6 +116,8 @@ def pick(rows):
 
 
 START = time.time()
+DART_MIN = int(os.environ.get("SCREEN_DART_MIN", "80"))     # 전자공시 응답이 느릴 때를 대비한 시간 제한(분)
+PX_MIN = int(os.environ.get("SCREEN_TOTAL_MIN", "170"))     # 일봉까지 포함한 전체 제한(분)
 SLOW = []
 
 
@@ -133,8 +135,8 @@ def fetch_all(corps):
         retry = key in recent and c.EPOCH - ent.get("ts", 0) > 20 * 3600
         need = [x for x in ids if x not in ent["asked"] or (retry and x not in ent["data"])]
         for i in range(0, len(need), 100):
-            if time.time() - START > 25 * 60:
-                print("시간 초과(25분)로 실적 수집을 멈춥니다. 다음 실행에서 이어 받습니다.", flush=True)
+            if time.time() - START > DART_MIN * 60:
+                print(f"시간 제한({DART_MIN}분)으로 실적 수집을 멈춥니다. 다음 실행에서 이어 받습니다.", flush=True)
                 break
             part = need[i:i + 100]
             t0, ne = time.time(), len(c.DART_ERR)
@@ -157,7 +159,8 @@ def fetch_all(corps):
             data.setdefault(corp, {})[(y, q)] = {"rev": rev, "op": op}
     keep = {f"{y}{q}" for y, _, q in plist}
     c.save("state/dart_q.json", {k: v for k, v in cache.items() if k in keep})
-    return data, calls
+    missing = sum(1 for y, _, q in plist for x in ids if x not in cache[f"{y}{q}"]["asked"])
+    return data, calls, missing
 
 
 def quarters(rep):
@@ -395,7 +398,9 @@ def main():
     cmap = c.corp_map()
     print(f"고유번호 표 {len(cmap)}개, {time.time() - t0:.1f}초", flush=True)
     corp_of = {r["code"]: cmap.get(r["code"]) for r in uni}
-    rep, calls = fetch_all([v for v in corp_of.values() if v])
+    rep, calls, missing = fetch_all([v for v in corp_of.values() if v])
+    if missing:
+        print(f"아직 받지 못한 보고서 {missing}건 — 실적 결과는 이전 것을 그대로 두고, 일봉만 미리 받아 둡니다.", flush=True)
     items, counts = [], {}
     for r in uni:
         corp = corp_of.get(r["code"])
@@ -407,21 +412,25 @@ def main():
                       "det": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in det.items()}})
     items.sort(key=lambda x: (-x["score"], -x["cap"]))
     latest = max((x["q"][-1] for x in items if x["q"]), default=None)
-    c.save(OUT, {"updated": c.NOW.strftime("%Y-%m-%d %H:%M"), "latest_q": latest, "total": total, "universe": len(uni), "excluded": why,
+    if not missing:
+      c.save(OUT, {"updated": c.NOW.strftime("%Y-%m-%d %H:%M"), "latest_q": latest, "total": total, "universe": len(uni), "excluded": why,
                  "counts": counts, "items": items})
     if SLOW:
         print(f"전자공시 평균 {sum(SLOW) / len(SLOW):.1f}초, 최장 {max(SLOW):.1f}초")
     # ── R-2 ──
     cfg = json.load(open(c.CONFIG, encoding="utf-8"))
     exclude = {s2["code"] for s2 in cfg.get("stocks", [])}           # 내 종목·관심 종목은 추천에서 뺀다
-    cands = [x for x in items if x["cls"] in ("up", "start", "watch") and x["code"] not in exclude]
+    cands = [x for x in items if (x["cls"] in ("up", "start", "watch") or missing) and x["code"] not in exclude]
     cands.sort(key=lambda x: -x["cap"])
     t = c.read_token() or c.issue_token()
     if not t:
         print("한투 토큰을 받지 못해 주가 판정을 건너뜁니다.")
         return 0
     k = c.Kis(t)
-    prices, fresh = price_data(k, [x["code"] for x in cands], START + 75 * 60)
+    prices, fresh = price_data(k, [x["code"] for x in cands], START + PX_MIN * 60)
+    if missing:
+        print(f"일봉: {len(prices)}종목 보유 (이번에 받은 것 {fresh}). 실적이 다 모이면 등급을 매깁니다.")
+        return 0
     try:
         md = json.load(open(os.path.join(c.ROOT, "market_daily.json"), encoding="utf-8"))
         mkt = {r[0]: r[1] for r in md.get("rows", [])}
