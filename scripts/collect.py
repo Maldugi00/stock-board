@@ -4,6 +4,7 @@
 - 키와 토큰은 출력하지 않는다. 토큰은 하루 동안 다시 쓰기 위해 앱 시크릿으로 암호화해서만 저장한다.
 - 이미 받아 둔 데이터는 다시 받지 않고, 바뀌는 부분만 받는다.
 """
+import io
 import json
 import os
 import subprocess
@@ -12,6 +13,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime, timedelta, timezone
 
 KST = timezone(timedelta(hours=9))
@@ -22,6 +25,8 @@ ROOT = os.environ.get("DATA_DIR", "data")
 CONFIG = os.environ.get("CONFIG", "config/stocks.json")
 APP_KEY = os.environ.get("KIS_APP_KEY", "").strip()
 APP_SECRET = os.environ.get("KIS_APP_SECRET", "").strip()
+DART_KEY = os.environ.get("DART_API_KEY", "").strip()
+DART = "https://opendart.fss.or.kr/api/"
 DOMAINS = [("모의투자", "https://openapivts.koreainvestment.com:29443"),
            ("실전", "https://openapi.koreainvestment.com:9443")]
 GAP = 0.5           # 호출 사이 간격(초). 모의투자는 초당 한도가 낮다.
@@ -286,6 +291,112 @@ def index(k, code, name):
     return out
 
 
+# ── 전자공시(DART): 분기 실적과 재무. 인증키는 조회 전용이다. ──
+DART_ERR = []
+
+
+def dart(path, params):
+    url = DART + path + "?" + urllib.parse.urlencode(dict(params, crtfc_key=DART_KEY))
+    time.sleep(0.15)
+    status, js = http("GET", url, {})
+    if status == 200 and isinstance(js, dict) and js.get("status") == "000":
+        return js.get("list") or []
+    if not (isinstance(js, dict) and js.get("status") == "013"):          # 013 = 해당 보고서 없음(정상)
+        DART_ERR.append(f"{path} HTTP {status} {js.get('status', '') if isinstance(js, dict) else ''}")
+    return None
+
+
+def corp_map():
+    """종목코드 → 전자공시 고유번호. 한 달에 한 번만 내려받는다."""
+    old = load("state/corp.json", {})
+    if old.get("map") and EPOCH - old.get("ts", 0) < 30 * 86400:
+        return old["map"]
+    try:
+        with urllib.request.urlopen(DART + "corpCode.xml?crtfc_key=" + DART_KEY, timeout=60) as r:
+            raw = r.read()
+        z = zipfile.ZipFile(io.BytesIO(raw))
+        root = ET.fromstring(z.read(z.namelist()[0]))
+        m = {}
+        for e in root.iter("list"):
+            code = (e.findtext("stock_code") or "").strip()
+            if code:
+                m[code] = (e.findtext("corp_code") or "").strip()
+        if m:
+            save("state/corp.json", {"ts": EPOCH, "map": m})
+            return m
+    except Exception as e:
+        DART_ERR.append("corpCode " + type(e).__name__)
+    return old.get("map") or {}
+
+
+def periods():
+    """최근 보고서부터 거꾸로: (사업연도, 보고서 코드, 이름, 연간 여부)"""
+    out = []
+    for y in (NOW.year, NOW.year - 1, NOW.year - 2):
+        out += [(y, "11011", f"{y % 100}.4Q", True), (y, "11014", f"{y % 100}.3Q", False),
+                (y, "11012", f"{y % 100}.2Q", False), (y, "11013", f"{y % 100}.1Q", False)]
+    return out
+
+
+def report(corp, year, code):
+    """한 보고서의 주요 계정. 연결재무제표를 먼저 쓰고 없으면 별도."""
+    rows = dart("fnlttSinglAcnt.json", {"corp_code": corp, "bsns_year": str(year), "reprt_code": code})
+    if not rows:
+        return None
+    for fs in ("CFS", "OFS"):
+        acc = {}
+        for r in rows:
+            if r.get("fs_div") != fs:
+                continue
+            name = (r.get("account_nm") or "").replace(" ", "")
+            key = ("rev" if name in ("매출액", "수익(매출액)", "영업수익", "매출") else "op" if name.startswith("영업이익") else
+                   "net" if name.startswith("당기순이익") or name.startswith("분기순이익") or name.startswith("반기순이익") else
+                   "assets" if name == "자산총계" else "debt" if name == "부채총계" else "equity" if name == "자본총계" else None)
+            if key and key not in acc:
+                acc[key] = num(r.get("thstrm_amount"), int)
+                if key in ("rev", "op", "net"):
+                    acc[key + "_sum"] = num(r.get("thstrm_add_amount"), int)     # 분기보고서의 누적 금액
+        if "rev" in acc or "op" in acc:
+            return acc
+    return None
+
+
+def financials(corp):
+    got = []
+    for y, code, label, annual in periods():
+        if len(got) >= 8:
+            break
+        acc = report(corp, y, code)
+        if acc:
+            got.append({"y": y, "q": label, "annual": annual, **acc})
+    if not got:
+        return None
+    by = {(g["y"], g["q"][-2:]): g for g in got}
+    quarters = []
+    for g in reversed(got):                                    # 과거 → 최근
+        item = {"q": g["q"]}
+        for k in ("rev", "op", "net"):
+            v = g.get(k)
+            if g["annual"]:                                    # 4분기 = 연간 − 1~3분기
+                parts = [by.get((g["y"], q)) for q in ("1Q", "2Q", "3Q")]
+                v = v - sum(p.get(k, 0) for p in parts) if v is not None and all(parts) else None
+            item[k] = v
+        if item["rev"] is not None or item["op"] is not None:
+            quarters.append(item)
+    last = got[0]
+    return {"quarters": quarters[-6:], "bs": {"asof": last["q"], "assets": last.get("assets"), "debt": last.get("debt"), "equity": last.get("equity")}}
+
+
+def latest_brief(corp):
+    """섹터 상위 종목용: 가장 최근 보고서 하나만."""
+    for y, code, label, annual in periods()[:5]:
+        acc = report(corp, y, code)
+        if acc:
+            return {"q": (f"{y}년 연간" if annual else label), "rev": acc.get("rev"), "op": acc.get("op"), "net": acc.get("net"),
+                    "debt": acc.get("debt"), "equity": acc.get("equity")}
+    return None
+
+
 def stale(ts, key, seconds):
     return EPOCH - ts.get(key, 0) >= seconds
 
@@ -345,6 +456,14 @@ def main():
                 ts[key] = EPOCH if got is not None else ts.get(key, 0)
             else:
                 d[key] = old[key]
+        if DART_KEY and s["type"] == "stock":
+            if stale(ts, "fin", 24 * 3600) or old.get("fin") is None:
+                corp = corp_map().get(code)
+                got = financials(corp) if corp else None
+                d["fin"] = got if got is not None else old.get("fin")
+                ts["fin"] = EPOCH if got is not None else ts.get("fin", 0)
+            else:
+                d["fin"] = old["fin"]
         d["ts"] = ts
         save(f"stocks/{code}.json", d)
         q = d["quote"] or {}
@@ -376,6 +495,21 @@ def main():
         if out:
             save("sectors.json", {"updated": meta["updated"], "ts": EPOCH, "parts_ts": EPOCH if got_parts else old.get("parts_ts", 0),
                                   "market": out[0], "sectors": out[1:]})
+
+    if DART_KEY:
+        sect = load("sectors.json", {})
+        old = load("fin_parts.json", {})
+        codes = sorted({p["code"] for s in sect.get("sectors", []) for p in s.get("parts") or [] if p.get("code")})
+        if codes and (EPOCH - old.get("ts", 0) >= 7 * 86400 or any(c not in old.get("items", {}) for c in codes)):
+            cm, items = corp_map(), dict(old.get("items", {}))
+            for c in codes:
+                if c in items and EPOCH - old.get("ts", 0) < 7 * 86400:
+                    continue
+                items[c] = (latest_brief(cm[c]) if c in cm else None) or items.get(c) or {}
+            save("fin_parts.json", {"ts": EPOCH, "items": {c: items[c] for c in codes}})
+        meta["dart_errors"] = DART_ERR[:10]
+        if DART_ERR:
+            print("전자공시 오류:", DART_ERR[:10])
 
     meta["calls"] = k.calls
     meta["errors"] = k.errors[:30]
