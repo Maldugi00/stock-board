@@ -1,0 +1,28 @@
+name: KIS 조회 시험
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [kis-test]
+    paths: ["scripts/kis_test.py", ".github/workflows/kis-test.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 조회 시험 실행
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: python3 scripts/kis_test.py
+      - name: 결과 저장
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add test/
+          git diff --cached --quiet || git commit -m "KIS 조회 시험 결과"
+          git push
