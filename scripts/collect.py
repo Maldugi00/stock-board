@@ -242,6 +242,23 @@ def daily(k, code, windows=((140, 0), (285, 141))):
     return [rows[d] for d in sorted(rows)]
 
 
+LONG_WINDOWS = tuple((140 * (i + 1), 140 * i + (1 if i else 0)) for i in range(9))   # 약 3.4년치, 한 번에 100봉 이내
+
+
+def long_daily(k, code, old_rows, ts):
+    """긴 일봉(성적표용). 일주일에 한 번만 전체를 다시 받고, 그 사이에는 최근 구간만 받아 이어 붙인다."""
+    full = stale(ts, "hist", 7 * 86400) or len(old_rows or []) < 60
+    got = daily(k, code, windows=LONG_WINDOWS if full else ((140, 0),))
+    if not got:
+        return old_rows or [], False
+    if full:
+        ts["hist"] = EPOCH
+        return got, True
+    rows = {r[0]: r for r in (old_rows or [])}
+    rows.update({r[0]: r for r in got})
+    return [rows[d] for d in sorted(rows)][-900:], True
+
+
 def opinions(k, code):
     js = k.get(Q + "invest-opinion", "FHKST663300C0",
                {"FID_COND_MRKT_DIV_CODE": "J", "FID_COND_SCR_DIV_CODE": "16633", "FID_INPUT_ISCD": code,
@@ -431,10 +448,9 @@ def main():
         d = {"code": code, "name": s["name"], "type": s["type"], "updated": meta["updated"], "date": TODAY}
         d["quote"] = quote(k, code) or old.get("quote")
         d["m1"] = minutes_today(k, code, old.get("m1", []) if old.get("date") == TODAY else [])
-        if stale(ts, "daily", 3 * 3600) or not old.get("daily"):
-            got = daily(k, code)
-            d["daily"] = got or old.get("daily", [])
-            ts["daily"] = EPOCH if got else ts.get("daily", 0)
+        if stale(ts, "daily", 3 * 3600) or not old.get("daily") or "hist" not in ts:
+            d["daily"], ok = long_daily(k, code, old.get("daily"), ts)
+            ts["daily"] = EPOCH if ok else ts.get("daily", 0)
         else:
             d["daily"] = old["daily"]
         # 지난 거래일의 30분봉: 없는 날짜만 받는다
@@ -473,6 +489,15 @@ def main():
     save("list.json", {"updated": meta["updated"], "stocks": listing})
 
     # 섹터: 대표 ETF의 일봉 종가
+    # 시장(KOSPI200 ETF) 긴 일봉: 시장 필터와 성적표에 쓴다
+    old = load("market_daily.json", {})
+    ts = old.get("ts", {})
+    if stale(ts, "daily", 3 * 3600) or not old.get("rows"):
+        rows, ok = long_daily(k, cfg["sector_market"]["code"], [[r[0], 0, 0, 0, r[1], 0] for r in old.get("rows", [])], ts)
+        if ok:
+            ts["daily"] = EPOCH
+            save("market_daily.json", {"code": cfg["sector_market"]["code"], "ts": ts, "rows": [[r[0], r[4]] for r in rows]})
+
     old = load("sectors.json", {})
     if EPOCH - old.get("ts", 0) >= 30 * 60 or not old.get("sectors") or any("parts" not in s for s in old["sectors"]):
         out = []
