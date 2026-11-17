@@ -172,7 +172,10 @@ header.top{display:flex;flex-direction:column;gap:10px}
 .sc thead th{font-size:11px;color:var(--muted)}
 .sc tbody th{text-align:left;color:var(--muted);font-size:12px}
 .sc td{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
-.sc td:first-of-type,.sc thead th:nth-child(2){color:var(--ink)}
+.sc .on{background:rgba(194,103,58,.09)} .sc thead th.on{color:var(--accent)}
+.modes{display:flex;gap:6px;margin-bottom:6px}
+.modes button{font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:#aab3bf;cursor:pointer}
+.modes button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:rgba(194,103,58,.1)}
 .lg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:#aab3bf;margin-top:6px;align-items:center}
 .lg i{display:inline-block;width:14px;height:2px;margin-right:5px;vertical-align:middle}
 .kv dd{margin:2px 0 0;font-family:var(--font-mono);font-weight:600;font-variant-numeric:tabular-nums}
@@ -308,7 +311,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.3</div>
+    <div class="ver mono">v1.4</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -472,6 +475,8 @@ function volText(v){ return v>=1e8?(v/1e8).toFixed(1)+'억주':(v>=1e4?fmt(v/1e4
 function esc(t){ return String(t==null?'':t).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
 /* 한 종목: 받은 데이터 + 기존 4종목 프로그램(engine.js)의 계산으로 판단과 대화를 만든다 */
+var MODES={def:{name:'방어형', p:KRT.P0, how:'손절선(3×ATR)에 닿거나 추세가 꺾이면(20일선 아래+MACD 음수) 팝니다'}, trend:{name:'추세형', p:KRT.P1, how:'손절선(3×ATR)에 닿을 때만 팝니다. 작은 눌림에는 팔지 않아요'}};
+function modeOf(code){ var m=saved&&saved.modes&&saved.modes[code]; return MODES[m]?m:'def'; }
 function buildStock(m, d, idx){
   var q=d.quote||{}, s={code:m.code, name:m.name, type:m.type, group:m.group, group0:m.group, color:COLORS[idx%COLORS.length], d:d,
     base:q.price||0, pct:q.pct||0, chg:q.change||0, hl:[q.high||0,q.low||0], vol:volText(q.vol||0), sparkv:m.spark||[]};
@@ -479,8 +484,8 @@ function buildStock(m, d, idx){
   if (rows.length && q.price){ var last=rows[rows.length-1];                        // 오늘 봉은 방금 받은 현재가로 맞춘다
     if (last[0]===ymd(d.date)){ last[4]=q.price; last[2]=Math.max(last[2],q.high||0,q.price); last[3]=Math.min(last[3],q.low||q.price,q.price); if (q.vol) last[5]=q.vol; } }
   s.rows=rows;
-  try { s.a0=KRT.analyze(rows, m.code, KRT.P0, 3); } catch(e){ s.a0=null; }                 // 필터 없는 원래 규칙(비교용)
-  try { s.a=MKTOK ? KRT.analyze(rows, m.code, KRT.P0, 3, MKTOK) : s.a0; } catch(e){ s.a=s.a0; }   // 시장 필터를 적용한 규칙(화면의 신호)
+  s.A={}; ['def','trend'].forEach(function(k){ try { s.A[k]=KRT.analyze(rows, m.code, MODES[k].p, 3, MKTOK||undefined); } catch(e){ s.A[k]=null; } });   // 두 방식 모두 계산해 두고
+  s.mode=modeOf(m.code); s.a=s.A[s.mode];                                                                                              // 고른 방식을 화면의 신호로 쓴다
   describe(s); return s;
 }
 function describe(s){
@@ -491,7 +496,7 @@ function describe(s){
     s.talk=[['chart','core',t,'데이터 부족'],['market','core',mk?'시장(KOSPI200)은 '+mk.state+'예요.':'시장 상태를 확인하는 중이에요.','시장'],['market','chart','차트 판단이 없어 비교하지 못했어요.','보류'],['chart','risk','지표가 없어 위험도 계산하지 못했어요.','보류'],
       ['risk','market','손절 기준선을 정하지 못했어요.','보류','warn'],['risk','core','판단을 미룹니다.','보류'],['core','chart','데이터가 쌓이면 다시 계산해 주세요.','재확인'],['core','core','결론은 보류입니다. '+t]];
     s.det={chart:[t],market:[mk?mk.outlook:'-'],risk:['-'],core:[t]}; return; }
-  var ind=a.ind, L=ind.n-1, sig=a.sig, st=a.st, hv=sig.hv, c=ind.c[L], P=KRT.P0, won=KRT.won;
+  var ind=a.ind, L=ind.n-1, sig=a.sig, st=a.st, hv=sig.hv, c=ind.c[L], P=MODES[s.mode||'def'].p, won=KRT.won;
   var sl=KRT.sellLine(ind, P, st.holding?st.highest:null), up=ind.up[L], rsi=ind.rsi[L], vr=ind.vr[L], mh=ind.mh[L];
   s.stop=st.holding&&st.stop ? st.stop : hv.stop; s.peak=st.holding&&st.highest ? st.highest : hv.hi; s.peakLabel=st.holding ? '보유 중 최고가' : '20일 고점';
   var gap=(c-s.stop)/c, below=c<s.stop;
@@ -719,7 +724,7 @@ function renderDetail(){
 }
 function renderPlan(){
   var s=STOCKS[state.i], gap=s.stop?((s.base-s.stop)/s.base*100):null;
-  $('plan').innerHTML='<div class="sec-head" style="margin-bottom:6px"><h3>운영 전략</h3><span class="hint">일봉 기준 프로그램 신호</span></div>'+
+  $('plan').innerHTML='<div class="sec-head" style="margin-bottom:6px"><h3>운영 전략</h3><span class="hint">일봉 기준 · '+MODES[s.mode].name+' 신호</span></div>'+
     '<div class="verdict"><strong>'+s.verdict+'</strong></div>'+
     '<ul class="plain">'+s.det.core.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>'+
     '<dl class="kv"><div><dt>현재가</dt><dd>'+fmt(s.base)+'원</dd></div><div><dt>손절 기준선</dt><dd>'+(s.stop?fmt(s.stop)+'원':'없음')+'</dd></div>'+
@@ -727,41 +732,44 @@ function renderPlan(){
     '<div class="times"><span><b>09:00</b>장 시작 전략</span><span><b>12:00</b>장중 점검</span><span><b>15:30</b>마감 판단</span></div>';
   renderScore();
 }
-/* ── 과거 성적표: 같은 규칙을 지난 기간에 그대로 적용했다면 ── */
+/* ── 과거 성적표: 두 방식을 지난 기간에 그대로 적용했다면 ── */
 function renderScore(){
-  var el=$('score'); if (!el) return; var s=STOCKS[state.i], A=s.a, B=s.a0;
-  if (!A || !A.s){ el.innerHTML='<h3>과거 성적표</h3><p class="hint" style="margin:6px 0 0">일봉이 모자라 계산하지 못했어요.</p>'; return; }
-  var f=A!==B, x=A.s, y=B.s, d=A.ind.d, yrs=x.years, per=d[0].slice(2).replace(/-/g,'.')+' ~ '+d[d.length-1].slice(2).replace(/-/g,'.');
-  var P=function(v){ return (v==null||isNaN(v))?'–':'<span class="'+(v>=0?'up':'down')+'">'+pc(v)+'</span>'; }, N=function(v,u){ return (v==null||isNaN(v))?'–':v+u; };
-  var cols=[['규칙'+(f?' + 시장 필터':''),x,true]]; if (f) cols.push(['규칙만',y,true]); cols.push(['그냥 보유',{total:x.bh,mdd:x.bhMdd},false]);
-  var row=function(label,fn){ return '<tr><th>'+label+'</th>'+cols.map(function(c){ return '<td>'+fn(c[1],c[2])+'</td>'; }).join('')+'</tr>'; };
-  var better=x.total>x.bh, safer=x.mdd>x.bhMdd, few=x.n<10, live=A.st.holding;
+  var el=$('score'); if (!el) return; var s=STOCKS[state.i], A=s.a, om=s.mode==='def'?'trend':'def', B=s.A&&s.A[om];
+  if (!A || !A.s || !B){ el.innerHTML='<h3>과거 성적표</h3><p class="hint" style="margin:6px 0 0">일봉이 모자라 계산하지 못했어요.</p>'; return; }
+  var D=s.A.def.s, T=s.A.trend.s, x=A.s, y=B.s, d=A.ind.d, yrs=x.years, per=d[0].slice(2).replace(/-/g,'.')+' ~ '+d[d.length-1].slice(2).replace(/-/g,'.');
+  var P=function(v){ return (v==null||isNaN(v))?'–':'<span class="'+(v>=0?'up':'down')+'">'+pc(v)+'</span>'; };
+  var cols=[['방어형',D,true,'def'],['추세형',T,true,'trend'],['그냥 보유',{total:x.bh,mdd:x.bhMdd},false,'']];
+  var row=function(label,fn){ return '<tr><th>'+label+'</th>'+cols.map(function(c){ return '<td'+(c[3]===s.mode?' class="on"':'')+'>'+fn(c[1],c[2])+'</td>'; }).join('')+'</tr>'; };
+  var me=MODES[s.mode].name, ot=MODES[om].name, few=x.n<10;
   var txt=(yrs<1.5?'상장 기간이나 받은 일봉이 짧아 '+yrs.toFixed(1)+'년치만 계산했어요. ':'')+
-    '이 기간에 규칙대로 사고팔았다면 '+pc(x.total)+', 사서 그냥 들고 있었다면 '+pc(x.bh)+'예요. '+
-    (better?'규칙이 더 벌었고 ':(safer?'수익은 그냥 보유가 더 컸지만 ':'수익은 그냥 보유가 더 컸고 '))+(safer?'가장 크게 빠졌을 때의 낙폭'+(better?'도':'은')+' 규칙 쪽이 작았습니다('+pc(x.mdd)+' 대 '+pc(x.bhMdd)+'). ':'낙폭은 규칙 쪽이 더 컸습니다('+pc(x.mdd)+' 대 '+pc(x.bhMdd)+'). ')+
-    (x.total<0?'이 종목에서는 규칙이 손실을 냈어요. 이 규칙과 잘 맞지 않는 종목이니 신호를 덜 믿는 편이 좋습니다. ':(!better&&safer?'즉 이 규칙은 수익을 늘리기보다 큰 하락을 피하는 쪽에 가까워요. ':''))+
-    (f?(!A.st.nBlock?'이 기간에는 시장 필터가 막은 매수가 없었어요. ':x.total>=y.total?'시장 필터는 매수 '+A.st.nBlock+'번을 막았고 결과가 나아졌어요('+pc(y.total)+' → '+pc(x.total)+'). ':'시장 필터는 매수 '+A.st.nBlock+'번을 막았는데 이 종목에서는 오히려 수익이 줄었어요('+pc(y.total)+' → '+pc(x.total)+'). '):'')+
-    (few?'거래가 '+x.n+'번뿐이라 우연일 수 있어요. ':'')+'수수료·세금·체결 오차는 반영했고, 과거 성적이 앞으로도 이어진다는 뜻은 아닙니다.';
-  el.innerHTML='<div class="sec-head" style="margin-bottom:6px"><h3>과거 성적표</h3><span class="hint">'+per+' · '+yrs.toFixed(1)+'년</span></div>'+
-    '<table class="sc"><thead><tr><th></th>'+cols.map(function(c){ return '<th>'+c[0]+'</th>'; }).join('')+'</tr></thead><tbody>'+
+    '지금 화면의 신호는 <b>'+me+'</b>이에요. '+MODES[s.mode].how+'. 이 기간에 '+me+'대로 사고팔았다면 '+pc(x.total)+', '+ot+'은 '+pc(y.total)+', 사서 그냥 들고 있었다면 '+pc(x.bh)+'예요. '+
+    '가장 크게 빠졌을 때의 낙폭은 '+me+' '+pc(x.mdd)+', '+ot+' '+pc(y.mdd)+', 그냥 보유 '+pc(x.bhMdd)+'입니다. '+
+    (x.total<0&&y.total<0?'두 방식 모두 손실이라 이 종목은 규칙과 잘 맞지 않아요. 신호를 덜 믿는 편이 좋습니다. ':(T.total>D.total&&T.mdd<D.mdd-0.005?'추세형이 더 벌었지만 낙폭도 더 컸어요. 수익과 버틸 수 있는 낙폭 중 무엇을 볼지에 따라 고르세요. ':(T.total>D.total?'이 종목에서는 추세형이 더 벌었고 낙폭은 비슷하거나 작았어요. ':'이 종목에서는 방어형이 더 나았어요. ')))+
+    (few?'거래가 '+x.n+'번뿐이라 우연일 수 있어요. ':'')+'두 방식 모두 시장 필터를 적용했고 수수료·세금·체결 오차를 반영했습니다. 과거 성적이 앞으로도 이어진다는 뜻은 아니에요.';
+  el.innerHTML='<div class="sec-head" style="margin-bottom:8px"><h3>과거 성적표</h3><span class="hint">'+per+' · '+yrs.toFixed(1)+'년</span></div>'+
+    '<div class="modes" role="group" aria-label="신호 방식">'+['def','trend'].map(function(k){ return '<button data-mode="'+k+'" aria-pressed="'+(k===s.mode)+'">'+MODES[k].name+'</button>'; }).join('')+'</div><p class="hint" style="margin:0 0 6px">누르면 이 종목의 신호 방식이 바뀌고, 이 폰에 저장돼요.</p>'+
+    '<table class="sc"><thead><tr><th></th>'+cols.map(function(c){ return '<th'+(c[3]===s.mode?' class="on"':'')+'>'+c[0]+'</th>'; }).join('')+'</tr></thead><tbody>'+
     row('수익률',function(v){ return P(v.total); })+row('최대 낙폭',function(v){ return P(v.mdd); })+
-    row('거래 횟수',function(v,r){ return r?N(v.n,'번'):'–'; })+row('이긴 비율',function(v,r){ return r&&v.n?(v.win*100).toFixed(0)+'%':'–'; })+
+    row('거래 횟수',function(v,r){ return r?v.n+'번':'–'; })+row('이긴 비율',function(v,r){ return r&&v.n?(v.win*100).toFixed(0)+'%':'–'; })+
     row('평균 보유',function(v,r){ return r&&v.n?v.hold.toFixed(0)+'일':'–'; })+'</tbody></table>'+
-    '<canvas class="cv" id="cv-score" style="height:150px;margin-top:10px" aria-label="규칙과 그냥 보유의 자산 흐름"></canvas>'+
-    '<div class="lg"><span><i style="background:var(--accent)"></i>규칙'+(f?' + 시장 필터':'')+'</span><span><i style="background:var(--muted)"></i>그냥 보유</span><span class="hint">지금 규칙상 '+(live?'보유 중':'현금')+'</span></div>'+
+    '<canvas class="cv" id="cv-score" style="height:150px;margin-top:10px" aria-label="두 방식과 그냥 보유의 자산 흐름"></canvas>'+
+    '<div class="lg"><span><i style="background:var(--accent)"></i>'+me+' (선택)</span><span><i style="background:var(--teal)"></i>'+ot+'</span><span><i style="background:var(--muted)"></i>그냥 보유</span><span class="hint">지금 '+me+' 기준 '+(A.st.holding?'보유 중':'현금')+'</span></div>'+
     '<p class="read" style="--c:var(--accent)"><b>읽는 법</b> '+txt+'</p>';
   drawScore();
 }
 function drawScore(){
-  if (!STOCKS.length || !$('cv-score') || !$('cv-score').clientWidth) return; var A=STOCKS[state.i].a; if (!A) return;
-  var c=ctxOf('cv-score'), g=c.g, eq=A.eq, cl=A.ind.c, n=eq.length, e=eq.map(function(v){ return v/eq[0]-1; }), b=cl.map(function(v){ return v/cl[0]-1; });
-  var all=e.concat(b,[0]), mn=Math.min.apply(null,all), mx=Math.max.apply(null,all), pd=(mx-mn)*0.08||0.01; mn-=pd; mx+=pd;
+  if (!STOCKS.length || !$('cv-score') || !$('cv-score').clientWidth) return; var s=STOCKS[state.i], A=s.a, B=s.A[s.mode==='def'?'trend':'def']; if (!A || !B) return;
+  var c=ctxOf('cv-score'), g=c.g, cl=A.ind.c, n=cl.length, nz=function(q){ return q.map(function(v){ return v/q[0]-1; }); }, e=nz(A.eq), o=nz(B.eq), b=nz(cl);
+  var all=e.concat(o,b,[0]), mn=Math.min.apply(null,all), mx=Math.max.apply(null,all), pd=(mx-mn)*0.08||0.01; mn-=pd; mx+=pd;
   var W=c.W-PADR, X=function(i){ return i/(n-1)*W; }, Y=function(v){ return (mx-v)/(mx-mn)*c.H; };
   g.setLineDash([3,4]); g.strokeStyle='rgba(120,140,170,.35)'; g.beginPath(); g.moveTo(0,Y(0)); g.lineTo(W,Y(0)); g.stroke(); g.setLineDash([]);
-  [[b,C.muted,1.1],[e,C.accent||'#c2673a',1.6]].forEach(function(t){ g.strokeStyle=t[1]; g.lineWidth=t[2]; g.beginPath(); t[0].forEach(function(v,i){ i?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v)); }); g.stroke(); });
-  g.lineWidth=1; g.textAlign='left'; g.fillStyle=C.accent||'#c2673a'; g.fillText(pc(e[n-1]), W+6, Math.max(8,Math.min(c.H-8,Y(e[n-1])+(Math.abs(Y(e[n-1])-Y(b[n-1]))<12?(e[n-1]>=b[n-1]?-7:7):0))));
-  g.fillStyle=C.muted; g.fillText(pc(b[n-1]), W+6, Math.max(8,Math.min(c.H-8,Y(b[n-1])+(Math.abs(Y(e[n-1])-Y(b[n-1]))<12?(e[n-1]>=b[n-1]?7:-7):0))));
+  var L=[[b,C.muted,1.1],[o,C.chart,1.1],[e,C.core,1.7]];
+  L.forEach(function(t){ g.strokeStyle=t[1]; g.lineWidth=t[2]; g.beginPath(); t[0].forEach(function(v,i){ i?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v)); }); g.stroke(); });
+  g.lineWidth=1; g.textAlign='left'; var labs=L.map(function(t){ return {y:Y(t[0][n-1]), c:t[1], t:pc(t[0][n-1],0)}; }).sort(function(p,q){ return p.y-q.y; });
+  labs.forEach(function(l,k){ if (k && l.y-labs[k-1].y<12) l.y=labs[k-1].y+12; }); var over=labs[labs.length-1].y-(c.H-7); if (over>0) labs.forEach(function(l){ l.y-=over; });
+  labs.forEach(function(l){ g.fillStyle=l.c; g.fillText(l.t, W+6, Math.max(7,l.y)); });
 }
+
 function toast(msg){ var t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(function(){t.classList.remove('show');},2600); }
 
 /* ── 차트 탭 ── */
@@ -1028,6 +1036,7 @@ document.addEventListener('click', function(e){
   var el=e.target.closest('button'); if(!el || !STOCKS.length) return;
   if (el.dataset.pick!=null){ $('pick').hidden=true; selectStock(+el.dataset.pick); setPage('b'); }
   else if (el.dataset.del!=null){ removeStock(+el.dataset.del); }
+  else if (el.dataset.mode){ var ms=STOCKS[state.i]; if (ms.A[el.dataset.mode] && ms.mode!==el.dataset.mode){ ms.mode=el.dataset.mode; ms.a=ms.A[ms.mode]; if (!saved.modes) saved.modes={}; saved.modes[ms.code]=ms.mode; persist(); describe(ms); renderRows(); renderQuote(); renderTalk(); renderDetail(); renderPlan(); renderBrief(); toast(ms.name+' 신호를 '+MODES[ms.mode].name+'으로 바꿨어요.'); } }
   else if (el.classList.contains('edit-btn')){ state.edit=!state.edit; each('.edit-btn', function(b){ b.textContent=state.edit?'완료':'편집'; b.setAttribute('aria-pressed',state.edit); }); $('reset-btn').hidden=!state.edit; renderRows(); }
   else if (el.id==='reset-btn'){ saved=fresh(); persist(); buildList(); selectStock(0); toast('처음 목록으로 되돌렸어요.'); }
   else if (el.classList.contains('row')){ selectStock(+el.dataset.i); setPage('b'); }

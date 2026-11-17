@@ -33,7 +33,8 @@
     { code: '229200', name: '코스닥150' }
   ];
   var SLIP = 0.0005;
-  var P0 = { atr_mult: 3.0, rsi_entry: 45, vol_mult: 1.5, breakout_n: 20 };
+  var P0 = { atr_mult: 3.0, rsi_entry: 45, vol_mult: 1.5, breakout_n: 20 };                 // 방어형: 트레일링 스탑 + 추세 훼손 매도
+  var P1 = { atr_mult: 3.0, rsi_entry: 45, vol_mult: 1.5, breakout_n: 20, no_trend_exit: true };   // 추세형: 트레일링 스탑으로만 매도
   var TRACK0 = { start: '2026-10-28', end: '2026-11-27', shares: { '005930': 30, '000660': 2, '122630': 40, '494310': 15 } };
 
   // 거래시간 (분 단위, KST). 수능일은 1시간 늦게 열고 닫습니다.
@@ -178,7 +179,7 @@
       }
       else if (sh > 0) {
         if (c[i] < hi - p.atr_mult * ind.atr[i]) { pend = 'sell'; reason = '트레일링 스탑'; }
-        else if (c[i] < ind.s20[i] && ind.mh[i] < 0) { pend = 'sell'; reason = '추세 훼손'; }
+        else if (!p.no_trend_exit && c[i] < ind.s20[i] && ind.mh[i] < 0) { pend = 'sell'; reason = '추세 훼손'; }
       }
       if (exec === 'close' && pend) {
         if (pend === 'buy') doBuy(i, c[i], c[i], reason); else doSell(i, c[i], reason);
@@ -215,7 +216,7 @@
     for (var k = Math.max(0, L - 19); k <= L; k++) if (ind.h[k] > hi) hi = ind.h[k];
     var stop = hi - p.atr_mult * ind.atr[L], c = ind.c[L];
     if (c < stop) return { sell: true, stop: stop, hi: hi, why: '트레일링 스탑 이탈', text: '트레일링 스탑 이탈 (20일 고점 ' + won(hi) + ' − ' + p.atr_mult + '×ATR = ' + won(stop) + ' > 종가 ' + won(c) + ')' };
-    if (c < ind.s20[L] && ind.mh[L] < 0) return { sell: true, stop: stop, hi: hi, why: '추세 훼손', text: '추세 훼손 (종가가 20일선 아래 + MACD 히스토그램 음수)' };
+    if (!p.no_trend_exit && c < ind.s20[L] && ind.mh[L] < 0) return { sell: true, stop: stop, hi: hi, why: '추세 훼손', text: '추세 훼손 (종가가 20일선 아래 + MACD 히스토그램 음수)' };
     return { sell: false, stop: stop, hi: hi, why: '', text: '청산 조건 없음 (트레일링 스탑 ' + won(stop) + ', 종가 ' + won(c) + ')' };
   }
   function signalText(ind, st, p) {
@@ -265,6 +266,7 @@
     var s19 = 0; for (var j = L - 19; j < L; j++) s19 += ind.c[j];
     var cS = s19 / 19;                                                                                    // 종가 < cS 이면 20일선 아래
     var trend = Math.min(cM, cS);
+    if (p.no_trend_exit) return { line: stop, stop: stop, trend: trend, which: '트레일링 스탑' };
     return { line: Math.max(stop, trend), stop: stop, trend: trend, which: stop >= trend ? '트레일링 스탑' : '추세 훼손' };
   }
 
@@ -296,7 +298,7 @@
       if (sh === 0 && ind.buy[i] && cash > 0) { pend = 'buy'; reason = ind.bt[i]; }
       else if (sh > 0) {
         if (c[i] < hi - p.atr_mult * ind.atr[i]) { pend = 'sell'; reason = '트레일링 스탑'; }
-        else if (c[i] < ind.s20[i] && ind.mh[i] < 0) { pend = 'sell'; reason = '추세 훼손'; }
+        else if (!p.no_trend_exit && c[i] < ind.s20[i] && ind.mh[i] < 0) { pend = 'sell'; reason = '추세 훼손'; }
       }
     }
     return { dates: dates, hold: hold, strat: strat, sh: shs, trades: trades, pending: pend, reason: reason, cash: cash, close: c[ind.n - 1], highest: hi, lastSell: lastSell, shares0: shares0 };
@@ -510,7 +512,7 @@
     return 'close';
   }
 
-  var api = { TICKERS: TICKERS, MARKET: MARKET, SECTORS: SECTORS, SLIP: SLIP, P0: P0, TRACK0: TRACK0, tickerOf: tickerOf,
+  var api = { TICKERS: TICKERS, MARKET: MARKET, SECTORS: SECTORS, SLIP: SLIP, P0: P0, P1: P1, TRACK0: TRACK0, tickerOf: tickerOf,
     dayNum: dayNum, dayStr: dayStr, addDays: addDays, dow: dow, mdLabel: mdLabel, hm: hm, kstNow: kstNow, session: session, isTradingDay: isTradingDay,
     nextTradingDay: nextTradingDay, marketState: marketState, isLiveBar: isLiveBar, sma: sma, cleanRows: cleanRows, indicators: indicators, cutYears: cutYears,
     backtest: backtest, stats: stats, holderView: holderView, signalText: signalText, analyze: analyze, marketOk: marketOk, sellLine: sellLine, trackTicker: trackTicker,
