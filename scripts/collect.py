@@ -24,7 +24,7 @@ APP_KEY = os.environ.get("KIS_APP_KEY", "").strip()
 APP_SECRET = os.environ.get("KIS_APP_SECRET", "").strip()
 DOMAINS = [("모의투자", "https://openapivts.koreainvestment.com:29443"),
            ("실전", "https://openapi.koreainvestment.com:9443")]
-GAP = 0.55          # 호출 사이 간격(초). 모의투자는 초당 한도가 낮다.
+GAP = 0.5           # 호출 사이 간격(초). 모의투자는 초당 한도가 낮다.
 Q = "/uapi/domestic-stock/v1/quotations/"
 HIST_DAYS = 5       # 30분봉으로 보관할 지난 거래일 수
 
