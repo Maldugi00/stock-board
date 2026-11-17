@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [kis-test]
-    paths: ["scripts/kis_test.py", ".github/workflows/kis-test.yml"]
+    paths: ["scripts/**", ".github/workflows/kis-test.yml"]
 
 permissions:
   contents: write
@@ -18,7 +18,7 @@ jobs:
         env:
           KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
-        run: python3 scripts/kis_test.py
+        run: python3 scripts/kis_probe.py
       - name: 결과 저장
         run: |
           git config user.name "github-actions[bot]"
