@@ -1,0 +1,45 @@
+name: 추천 종목 스크리닝
+
+# 국내 전 종목에서 실적·추세 변화가 시작된 종목을 거른다. 하루 한 번(저녁) 또는 직접 실행.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 9 * * 1-5"       # 평일 18:47 KST
+
+concurrency:
+  group: collect                 # 데이터 가지를 같이 쓰므로 수집과 겹치지 않게 차례로 돈다
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: 지난 데이터 불러오기
+        run: |
+          mkdir -p data
+          if git fetch --depth 1 origin data 2>/dev/null; then
+            git archive FETCH_HEAD | tar -x -C data
+          fi
+      - name: 스크리닝
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          DATA_DIR: data
+        run: python3 scripts/screen.py
+      - name: 데이터 가지에 저장
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd data
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "스크리닝 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
