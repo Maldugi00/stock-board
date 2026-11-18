@@ -1,0 +1,18 @@
+name: 임시 미국 시세 점검
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p data
+          git fetch --depth 1 origin data && git archive FETCH_HEAD state | tar -x -C data || true
+      - env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          DATA_DIR: data
+        run: python3 -u scripts/probe_us.py
