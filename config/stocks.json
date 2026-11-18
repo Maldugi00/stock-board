@@ -53,7 +53,8 @@
       "code": "294870",
       "name": "IPARK현대산업개발",
       "type": "stock",
-      "group": "watch"
+      "group": "watch",
+      "mode": "trend"
     }
   ],
   "sector_market": {
