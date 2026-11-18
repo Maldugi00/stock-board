@@ -356,7 +356,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.9.1</div>
+    <div class="ver mono">v1.9.2</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -729,6 +729,7 @@ function renderMarket(){
   var ix=MARKET.indices, two=ix.slice(0,2), k200=ix[2];
   $('idx').innerHTML=two.map(function(x,k){ var u=x.pct>=0; return '<article><div class="k">'+x.name+'</div><div class="v '+(u?'up':'down')+'">'+x.price.toLocaleString('ko-KR',{minimumFractionDigits:2})+'</div><div class="c '+(u?'up':'down')+'">'+(u?'▲ ':'▼ ')+sgn(x.pct)+'</div><canvas id="cv-idx'+k+'" aria-label="'+x.name+' 오늘 흐름"></canvas></article>'; }).join('');
   var rows=[]; if (k200) rows.push(['KOSPI200', k200.price.toLocaleString('ko-KR',{minimumFractionDigits:2})+' <span class="'+(k200.pct>=0?'up':'down')+'">'+sgn(k200.pct)+'</span>']);
+  if (FX && FX.usdkrw){ var fu=FX.usdkrw; rows.push(['원/달러 환율', fu.price.toLocaleString('ko-KR',{minimumFractionDigits:1, maximumFractionDigits:1})+' <span class="'+(fu.change>0?'up':fu.change<0?'down':'muted')+'">'+(fu.change>0?'+':'')+fu.change.toFixed(1)+'원</span>']); }
   two.forEach(function(x){ rows.push([x.name+' 오른/내린 종목', '<span class="up">'+x.up+'</span> / <span class="down">'+x.down+'</span>']); });
   rows.push(['데이터 기준', MARKET.updated.slice(5)]);
   $('mini').innerHTML=rows.map(function(m){ return '<div><b>'+m[0]+'</b><span>'+m[1]+'</span></div>'; }).join('');
@@ -827,6 +828,10 @@ function renderBrief(){
     avg<0 ? ['약보합','down','지수가 조금 내렸지만 크게 밀리는 날은 아니에요.'] : ['강보합','up','지수가 조금 올랐지만 힘이 강한 날은 아니에요.'];
   var mk=BOARD&&BOARD.market;
   L.push(['지수','코스피 <span class="'+(kp.pct>=0?'up':'down')+'">'+sgn(kp.pct)+'</span>, 코스닥 <span class="'+(kq.pct>=0?'up':'down')+'">'+sgn(kq.pct)+'</span>. 코스피에서 오른 종목은 '+(wide*100).toFixed(0)+'%예요.'+(mk?' 최근 흐름(KOSPI200 일봉)은 '+esc(mk.state)+' 상태입니다.':'')]);
+  if (FX && FX.usdkrw){ var f1=function(v){ return v.toLocaleString('ko-KR',{minimumFractionDigits:1, maximumFractionDigits:1}); }, u=FX.usdkrw, ds=(u.days||[]).map(function(x){ return x[1]; }).filter(Boolean), d20=ds.slice(0,20), hi=d20.length?Math.max.apply(null,d20):null, lo=d20.length?Math.min.apply(null,d20):null, ago=ds.length>5?ds[5]:null;
+    var arrow=u.change>0?'<span class="up">+'+u.change.toFixed(1)+'원 (+'+u.pct.toFixed(2)+'%)</span>':u.change<0?'<span class="down">'+u.change.toFixed(1)+'원 ('+u.pct.toFixed(2)+'%)</span>':'<span class="muted">변동 없음</span>';
+    L.push(['환율', '원/달러 '+f1(u.price)+'원, 전일보다 '+arrow+'. '+(ago?'1주일 전('+f1(ago)+'원)보다 '+(u.price<ago?'원화가 강해졌어요':'원화가 약해졌어요')+'. ':'')+(hi?'최근 20거래일 범위는 '+f1(lo)+'~'+f1(hi)+'원이에요. ':'')+
+      '환율이 내리면(원화 강세) 외국인 자금이 들어오기 쉽고, 오르면(원화 약세) 빠지기 쉬운 편이에요. 수출 비중이 큰 반도체·자동차는 원화 약세가 실적에는 도움이 되기도 합니다.']); }
   if (FLOW && FLOW.kospi && FLOW.kospi.length){ var fa=FLOW.kospi[0], fb=(FLOW.kosdaq||[])[0], five=FLOW.kospi.slice(0,5);
     var fe=function(v){ v=Math.round(v); return '<span class="'+(v>0?'up':v<0?'down':'muted')+'">'+(v>0?'+':'')+fmt(v)+'억</span>'; };
     var s5=five.reduce(function(t,x){ return t+x.frgn; },0), sells=five.filter(function(x){ return x.frgn<0; }).length, isToday=String(fa.d)===day;
@@ -1153,7 +1158,7 @@ function drawCorp(){
   tagAt(T.max,'최고',C.up); tagAt(T.avg,'평균',C.core); tagAt(T.min,'최저',C.down);
   var now='현재 '+fmt(s.base); g.fillStyle=C.ink; g.fillRect(split-2,yn-9,g.measureText(now).width+12,18); g.fillStyle='#0b0f15'; g.fillText(now,split+4,yn);
 }
-var REC=null, SPARKS={}, FLOW=null;
+var REC=null, SPARKS={}, FLOW=null, FX=null;
 /* ── 추천 종목: 전 종목 스크리닝 결과 (규칙으로 고른 후보) ── */
 function recSpark(v, w, h){
   w=w||88; h=h||30; if (!v || v.length<2) return '';
@@ -1362,7 +1367,8 @@ function setNotes(){
   $('notice').textContent = reduce ? NOTES[0] : NOTES[noteI%NOTES.length];
 }
 function loadAll(){
-  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; }), getJSON('screen/result.json').catch(function(){ return null; }), getJSON('screen/sparks.json').catch(function(){ return null; }), getJSON('flow.json').catch(function(){ return null; })]).then(function(r){
+  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; }), getJSON('screen/result.json').catch(function(){ return null; }), getJSON('screen/sparks.json').catch(function(){ return null; }), getJSON('flow.json').catch(function(){ return null; }), getJSON('fx.json').catch(function(){ return null; })]).then(function(r){
+    FX = r[11] && r[11].usdkrw ? r[11] : null;
     FLOW = r[10] && r[10].kospi ? r[10] : null;
     SPARKS = (r[9] && r[9].items) || {};
     REC = r[8] && r[8].items ? r[8] : null;

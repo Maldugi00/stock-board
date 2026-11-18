@@ -298,6 +298,22 @@ def investor_flow(k, idx, mkt):
     return out
 
 
+def fx_usdkrw(k):
+    """원/달러 환율: 현재값과 최근 일별 종가 (해외 지수·환율 기간별 시세, 환율 = X / FX@KRW)."""
+    d2, d1 = NOW.strftime("%Y%m%d"), (NOW - timedelta(days=45)).strftime("%Y%m%d")
+    js = k.get("/uapi/overseas-price/v1/quotations/inquire-daily-chartprice", "FHKST03030100",
+               {"FID_COND_MRKT_DIV_CODE": "X", "FID_INPUT_ISCD": "FX@KRW", "FID_INPUT_DATE_1": d1, "FID_INPUT_DATE_2": d2,
+                "FID_PERIOD_DIV_CODE": "D"}, "원/달러 환율")
+    if not js:
+        return None
+    o = js.get("output1") or {}
+    days = [[r["stck_bsop_date"], num(r.get("ovrs_nmix_prpr"))] for r in js.get("output2") or [] if r.get("stck_bsop_date")]
+    price = num(o.get("ovrs_nmix_prpr"))
+    if not price:
+        return None
+    return {"price": price, "change": num(o.get("ovrs_nmix_prdy_vrss")), "pct": num(o.get("prdy_ctrt")), "days": days[:30]}
+
+
 def etf_parts(k, code):
     js = k.get("/uapi/etfetn/v1/quotations/inquire-component-stock-price", "FHKST121600C0",
                {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code, "FID_COND_SCR_DIV_CODE": "11216"}, f"ETF 구성 {code}")
@@ -522,6 +538,13 @@ def main():
             if closing:
                 ts["closed"] = TODAY
             save("market_daily.json", {"code": cfg["sector_market"]["code"], "ts": ts, "rows": [[r[0], r[4]] for r in rows]})
+
+    # 원/달러 환율: 10분마다
+    old = load("fx.json", {})
+    if EPOCH - old.get("ts", 0) >= 9 * 60 or not old.get("usdkrw"):
+        fx = fx_usdkrw(k)
+        if fx:
+            save("fx.json", {"updated": meta["updated"], "ts": EPOCH, "usdkrw": fx})
 
     # 투자자별(외국인·기관·개인) 매매동향: 10분마다
     old = load("flow.json", {})
