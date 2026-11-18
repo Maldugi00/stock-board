@@ -356,7 +356,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.9</div>
+    <div class="ver mono">v1.9.1</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -827,6 +827,12 @@ function renderBrief(){
     avg<0 ? ['약보합','down','지수가 조금 내렸지만 크게 밀리는 날은 아니에요.'] : ['강보합','up','지수가 조금 올랐지만 힘이 강한 날은 아니에요.'];
   var mk=BOARD&&BOARD.market;
   L.push(['지수','코스피 <span class="'+(kp.pct>=0?'up':'down')+'">'+sgn(kp.pct)+'</span>, 코스닥 <span class="'+(kq.pct>=0?'up':'down')+'">'+sgn(kq.pct)+'</span>. 코스피에서 오른 종목은 '+(wide*100).toFixed(0)+'%예요.'+(mk?' 최근 흐름(KOSPI200 일봉)은 '+esc(mk.state)+' 상태입니다.':'')]);
+  if (FLOW && FLOW.kospi && FLOW.kospi.length){ var fa=FLOW.kospi[0], fb=(FLOW.kosdaq||[])[0], five=FLOW.kospi.slice(0,5);
+    var fe=function(v){ v=Math.round(v); return '<span class="'+(v>0?'up':v<0?'down':'muted')+'">'+(v>0?'+':'')+fmt(v)+'억</span>'; };
+    var s5=five.reduce(function(t,x){ return t+x.frgn; },0), sells=five.filter(function(x){ return x.frgn<0; }).length, isToday=String(fa.d)===day;
+    L.push(['외국인', (isToday?'오늘 지금까지 ':String(fa.d).slice(4,6)+'/'+String(fa.d).slice(6,8)+' 기준 ')+'외국인은 코스피 '+fe(fa.frgn)+(fb?', 코스닥 '+fe(fb.frgn):'')+'이에요 (+ 순매수, − 순매도). '+
+      '코스피에서 기관은 '+fe(fa.orgn)+', 개인은 '+fe(fa.prsn)+'. 최근 '+five.length+'거래일 외국인 코스피 누적은 '+fe(s5)+'으로, '+
+      (sells>=4?'해외 자금이 계속 빠져나가는 흐름이에요.':sells<=1?'해외 자금이 들어오는 흐름이에요.':'해외 자금이 들어왔다 나갔다 엇갈려요.')]); }
   if (SECTORS && SECTORS.sectors){ var sc=SECTORS.sectors.filter(function(x){ return x.closes && x.closes.length>1; }).map(function(x){ var c=x.closes, a=c[c.length-1], b=c[c.length-2]; return {name:x.name, d:String(a[0]), p:(a[1]-b[1])/b[1]}; });
     if (sc.length>2){ sc.sort(function(a,b){ return b.p-a.p; }); var today=sc[0].d===day, up=sc.filter(function(x){ return x.p>0; }).length, f=function(x){ return esc(x.name)+' <span class="'+(x.p>=0?'up':'down')+'">'+pc(x.p)+'</span>'; };
       L.push(['섹터',(today?'':'최근 거래일 기준으로 ')+sc.length+'개 중 '+up+'개가 올랐어요. 위쪽은 '+f(sc[0])+', '+f(sc[1])+'. 아래쪽은 '+f(sc[sc.length-1])+', '+f(sc[sc.length-2])+'.']); } }
@@ -901,7 +907,7 @@ function renderSectTop(){
   var rows=parts.map(function(p,k){ var u=p.pct>=0, open=k===state.top;
     return '<article><span class="rk">'+(k+1)+'</span><button class="tsel" data-top="'+k+'" aria-expanded="'+open+'"><span class="nm">'+esc(p.name)+' <span class="hint">'+(open?'▴':'▾')+'</span></span><span class="sub">ETF 안 비중 '+p.weight.toFixed(1)+'%</span></button>'+
       (SPARKS[p.code]?'<span class="tsp">'+recSpark(SPARKS[p.code],64,26)+'</span>':'')+
-      '<span class="rt"><span class="'+(u?'up':'down')+'">'+(u?'+':'')+p.pct.toFixed(2)+'%</span><br><span class="hint">오늘</span></span>'+
+      '<span class="rt"><span class="'+(p.pct>0?'up':p.pct<0?'down':'muted')+'">'+(p.pct>0?'+':'')+p.pct.toFixed(2)+'%</span><br><span class="hint">오늘</span></span>'+
       (open?'<div class="fin">'+briefHTML(FINP[p.code])+newsLink(p.name)+'</div>':'')+'</article>'; }).join('');
   $('sect-top').innerHTML='<div class="sec-head" style="margin-bottom:0"><h3>'+t.name+' 상위 5종목</h3><span class="hint">대표 ETF 비중 순</span></div>'+
     '<p class="hint" style="margin:6px 0 0">오른쪽 작은 그래프는 최근 약 6개월 종가 흐름이에요 (빨강 = 6개월 전보다 높음, 파랑 = 낮음).</p>'+
@@ -1147,7 +1153,7 @@ function drawCorp(){
   tagAt(T.max,'최고',C.up); tagAt(T.avg,'평균',C.core); tagAt(T.min,'최저',C.down);
   var now='현재 '+fmt(s.base); g.fillStyle=C.ink; g.fillRect(split-2,yn-9,g.measureText(now).width+12,18); g.fillStyle='#0b0f15'; g.fillText(now,split+4,yn);
 }
-var REC=null, SPARKS={};
+var REC=null, SPARKS={}, FLOW=null;
 /* ── 추천 종목: 전 종목 스크리닝 결과 (규칙으로 고른 후보) ── */
 function recSpark(v, w, h){
   w=w||88; h=h||30; if (!v || v.length<2) return '';
@@ -1356,7 +1362,8 @@ function setNotes(){
   $('notice').textContent = reduce ? NOTES[0] : NOTES[noteI%NOTES.length];
 }
 function loadAll(){
-  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; }), getJSON('screen/result.json').catch(function(){ return null; }), getJSON('screen/sparks.json').catch(function(){ return null; })]).then(function(r){
+  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; }), getJSON('screen/result.json').catch(function(){ return null; }), getJSON('screen/sparks.json').catch(function(){ return null; }), getJSON('flow.json').catch(function(){ return null; })]).then(function(r){
+    FLOW = r[10] && r[10].kospi ? r[10] : null;
     SPARKS = (r[9] && r[9].items) || {};
     REC = r[8] && r[8].items ? r[8] : null;
     BRIEF = r[6] && r[6].headline ? r[6] : null; TRADE = r[7] && r[7].slots ? r[7] : null;

@@ -280,6 +280,24 @@ def news(k, code):
              "src": r.get("dorg")} for r in (js.get("output") or [])[:20]]
 
 
+def investor_flow(k, idx, mkt):
+    """시장별 투자자 매매동향(일별). 금액은 억원, 최근 거래일부터."""
+    d = NOW.strftime("%Y%m%d")
+    js = k.get("/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market", "FHPTJ04040000",
+               {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": idx, "FID_INPUT_DATE_1": d, "FID_INPUT_ISCD_1": mkt,
+                "FID_INPUT_DATE_2": d, "FID_INPUT_ISCD_2": idx}, f"투자자 동향 {mkt}")
+    rows = (js or {}).get("output") or (js or {}).get("output1") or []
+    if isinstance(rows, dict):
+        rows = [rows]
+    out = []
+    for r in rows[:20]:
+        if not r.get("stck_bsop_date"):
+            continue
+        eok = lambda key: round(num(r.get(key)) / 100, 1)               # 백만원 → 억원
+        out.append({"d": r["stck_bsop_date"], "frgn": eok("frgn_ntby_tr_pbmn"), "orgn": eok("orgn_ntby_tr_pbmn"), "prsn": eok("prsn_ntby_tr_pbmn")})
+    return out
+
+
 def etf_parts(k, code):
     js = k.get("/uapi/etfetn/v1/quotations/inquire-component-stock-price", "FHKST121600C0",
                {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code, "FID_COND_SCR_DIV_CODE": "11216"}, f"ETF 구성 {code}")
@@ -505,11 +523,18 @@ def main():
                 ts["closed"] = TODAY
             save("market_daily.json", {"code": cfg["sector_market"]["code"], "ts": ts, "rows": [[r[0], r[4]] for r in rows]})
 
+    # 투자자별(외국인·기관·개인) 매매동향: 10분마다
+    old = load("flow.json", {})
+    if EPOCH - old.get("ts", 0) >= 9 * 60 or not old.get("kospi"):
+        kp, kq = investor_flow(k, "0001", "KSP"), investor_flow(k, "1001", "KSQ")
+        if kp or kq:
+            save("flow.json", {"updated": meta["updated"], "ts": EPOCH, "kospi": kp or old.get("kospi", []), "kosdaq": kq or old.get("kosdaq", [])})
+
     old = load("sectors.json", {})
     if EPOCH - old.get("ts", 0) >= 30 * 60 or not old.get("sectors") or any("parts" not in s for s in old["sectors"]):
         out = []
         had = {s["code"]: s.get("parts") for s in old.get("sectors", [])}
-        parts_old = EPOCH - old.get("parts_ts", 0) >= 6 * 3600          # 구성 종목은 6시간마다만 다시 받는다
+        parts_old = EPOCH - old.get("parts_ts", 0) >= 30 * 60          # 구성 종목 등락률도 섹터와 같이 30분마다 (아침에 받은 0% 가 하루 종일 남지 않게)
         got_parts = False
         for i, s in enumerate([cfg["sector_market"]] + cfg["sectors"]):
             rows = daily(k, s["code"], windows=((140, 0),))
