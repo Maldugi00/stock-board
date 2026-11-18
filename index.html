@@ -76,6 +76,13 @@ button{cursor:pointer}
 .rrow .rsp{width:64px;height:24px}
 .rrow .rs{font-family:var(--font-mono);font-size:13px;color:var(--ink);min-width:28px;text-align:right}
 .muted{color:var(--muted)}
+.ract{display:flex;gap:6px;margin-top:10px}
+.row.pend{opacity:.55;cursor:default}
+.top3 article{grid-template-columns:26px minmax(0,1fr) auto auto !important}
+.tsp{display:flex;align-items:center}
+.tsp .rsp{width:64px;height:26px}
+.del.arm{color:#fff;background:var(--up);border-color:var(--up)}
+.lnk{background:none;border:0;padding:0;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer}
 .brief .bn{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:7px;font-size:13px}
 .brief .bn b{font-size:12px;color:var(--muted);font-weight:500}
 .brief .bn a{color:var(--ink);text-decoration:none;line-height:1.45}
@@ -349,7 +356,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.8.1</div>
+    <div class="ver mono">v1.9</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -399,7 +406,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
   <section aria-labelledby="h-watch">
     <div class="sec-head"><h2 id="h-watch">관심종목</h2><button class="btn sm edit-btn" aria-pressed="false">편집</button></div>
     <ul class="rows" id="rows-w"></ul>
-    <p class="hint" style="margin:6px 0 0">편집을 누르면 내 종목과 관심종목 사이를 옮기거나 숨길 수 있어요. 이 구분은 이 폰에만 저장됩니다. 새 종목은 저장소 설정에 넣어야 데이터가 받아져요. <button class="btn sm" id="reset-btn" hidden>처음 목록으로</button></p>
+    <div id="sync-box"></div>
   </section>
 
   <section aria-labelledby="h-rec">
@@ -527,7 +534,8 @@ function esc(t){ return String(t==null?'':t).replace(/[&<>"]/g, function(c){ ret
 
 /* 한 종목: 받은 데이터 + 기존 4종목 프로그램(engine.js)의 계산으로 판단과 대화를 만든다 */
 var MODES={def:{name:'방어형', p:KRT.P0, how:'손절선(3×ATR)에 닿거나 추세가 꺾이면(20일선 아래+MACD 음수) 팝니다'}, trend:{name:'추세형', p:KRT.P1, how:'손절선(3×ATR)에 닿을 때만 팝니다. 작은 눌림에는 팔지 않아요'}};
-function modeOf(code){ var m=saved&&saved.modes&&saved.modes[code]; return MODES[m]?m:'def'; }
+function modeOf(code){ var p=typeof pendingFor==='function'&&pendingFor(code,'mode'); if (p) return p.mode; var m=saved&&saved.modes&&saved.modes[code], sv=SRVMODE[code];
+  if (typeof ghToken==='function' && ghToken()) return MODES[sv]?sv:'def'; return MODES[m]?m:(MODES[sv]?sv:'def'); }
 function buildStock(m, d, idx){
   var q=d.quote||{}, s={code:m.code, name:m.name, type:m.type, group:m.group, group0:m.group, color:COLORS[idx%COLORS.length], d:d,
     base:q.price||0, pct:q.pct||0, chg:q.change||0, hl:[q.high||0,q.low||0], vol:volText(q.vol||0), sparkv:m.spark||[]};
@@ -617,10 +625,13 @@ function rowHTML(s,i){ var ch=s.pct, u=ch>=0;
   return '<li><button class="row" data-i="'+i+'" aria-pressed="'+(i===state.i)+'">'+icon(s)+
     '<span style="min-width:0"><span class="nm">'+esc(s.name)+'</span><span class="sub"><span class="pill '+s.tone+'">'+s.verdict+'</span></span></span>'+spark(s)+
     '<span class="num"><span class="badge '+(u?'u':'d')+'">'+fmt(s.base)+'</span><span class="ch '+(u?'up':'down')+'">'+(u?'+':'')+ch.toFixed(2)+'%</span></span></button>'+
-    (state.edit?'<button class="mv" data-mv="'+i+'">'+(s.group==='mine'?'관심으로':'내 종목으로')+'</button><button class="del" data-del="'+i+'" aria-label="'+esc(s.name)+' 숨기기">숨김</button>':'')+'</li>'; }
+    (state.edit?'<button class="mv" data-mv="'+i+'">'+(s.group==='mine'?'관심으로':'내 종목으로')+'</button><button class="del'+(state.delArm===s.code?' arm':'')+'" data-del="'+i+'" aria-label="'+esc(s.name)+' 삭제">'+(state.delArm===s.code?'정말 삭제':(ghToken()?'삭제':'숨김'))+'</button>':'')+'</li>'; }
+function pendRow(p){ return '<li><div class="row pend" aria-disabled="true"><span class="logo">'+p.code.slice(0,3)+'<br>'+p.code.slice(3)+'</span><span style="min-width:0"><span class="nm">'+esc(p.name||p.code)+'</span><span class="sub"><span class="pill wait">'+(p.late?'반영 안 됨 · 다시 추가해 보세요':'데이터 정리중')+'</span></span></span></div></li>'; }
 function renderRows(){
   [['mine','rows','내 종목이 없어요. 관심종목에서 옮겨보세요.'],['watch','rows-w','관심종목이 없어요.']].forEach(function(g){ var el=$(g[1]); el.classList.toggle('editing', state.edit);
-    el.innerHTML = STOCKS.map(function(s,i){ return s.group===g[0]?rowHTML(s,i):''; }).join('') || '<li class="hint" style="padding:10px 4px">'+g[2]+'</li>'; });
+    var have={}; STOCKS.forEach(function(s){ have[s.code]=1; });
+    var pend=PENDING.filter(function(p){ return p.op==='add' && p.group===g[0] && !have[p.code]; }).map(pendRow).join('');
+    el.innerHTML = (STOCKS.map(function(s,i){ return s.group===g[0]?rowHTML(s,i):''; }).join('') + pend) || '<li class="hint" style="padding:10px 4px">'+g[2]+'</li>'; });
 }
 /* 내 종목/관심종목 구분과 숨김은 이 폰에만 저장한다 */
 var KEY='board_list_v3', saved;
@@ -628,13 +639,87 @@ function fresh(){ return {groups:{}, removed:[]}; }
 try { saved=JSON.parse(localStorage.getItem(KEY)); } catch(e){ saved=null; }
 if (!saved || !saved.groups || !Array.isArray(saved.removed)) saved=fresh();
 function persist(){ try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch(e){} }
-function buildList(){ STOCKS = ALL.filter(function(s){ return saved.removed.indexOf(s.code)<0; }); if (!STOCKS.length) STOCKS=ALL.slice();
-  STOCKS.forEach(function(s){ s.group = saved.groups[s.code] || s.group0; }); }
-function moveStock(idx){ var s=STOCKS[idx]; s.group = s.group==='mine'?'watch':'mine'; saved.groups[s.code]=s.group; persist(); renderRows(); renderBrief(); renderBook(); toast(s.name+(s.group==='mine'?' 내 종목으로 옮겼어요.':' 관심종목으로 옮겼어요.')); }
+function buildList(){ var tok=!!ghToken();
+  STOCKS = ALL.filter(function(s){ if (s.group0==='trade' || !s.d) return false; if (pendingFor(s.code,'remove')) return false; return tok || saved.removed.indexOf(s.code)<0; });
+  if (!STOCKS.length) STOCKS=ALL.filter(function(s){ return s.group0!=='trade' && s.d; }).slice(0,1);
+  STOCKS.forEach(function(s){ var p=pendingFor(s.code,'group')||pendingFor(s.code,'add'); s.group = (p && p.group) || (tok ? s.group0 : (saved.groups[s.code] || s.group0)); }); }
+function moveStock(idx){ var s=STOCKS[idx], g=s.group==='mine'?'watch':'mine';
+  if (!ghEdit([{op:'group', code:s.code, group:g}])){ s.group=g; saved.groups[s.code]=g; persist(); renderRows(); }
+  renderBrief(); renderBook(); toast(s.name+(g==='mine'?' 내 종목으로 옮겼어요.':' 관심종목으로 옮겼어요.')); }
 function removeStock(idx){
-  if (STOCKS.length<=1){ toast('최소 한 종목은 남겨주세요.'); return; }
-  var s=STOCKS[idx]; saved.removed.push(s.code); persist(); STOCKS.splice(idx,1); toast(s.name+' 숨겼어요. "처음 목록으로"를 누르면 다시 나와요.');
+  var s=STOCKS[idx];
+  if (state.delArm!==s.code){ state.delArm=s.code; renderRows(); setTimeout(function(){ if (state.delArm===s.code){ state.delArm=null; renderRows(); } }, 4000); return; }
+  state.delArm=null;
+  if (STOCKS.length<=1){ toast('최소 한 종목은 남겨주세요.'); renderRows(); return; }
+  if (ghEdit([{op:'remove', code:s.code}])){ toast(s.name+' 삭제했어요. 조건이 맞으면 추천 종목에 다시 나올 수 있어요.'); return; }
+  saved.removed.push(s.code); persist(); STOCKS.splice(idx,1); toast(s.name+' 이 폰에서 숨겼어요. 저장소 동기화를 켜면 진짜로 삭제돼요.');
   if (idx===state.i) selectStock(Math.min(idx,STOCKS.length-1)); else { if (idx<state.i) state.i--; renderRows(); }
+}
+/* ── 저장소 동기화: 폰에 넣은 GitHub 토큰으로 '종목 편집' 작업을 불러 설정 파일을 바꾼다 ── */
+var TKEY='board_gh_token', PKEY='board_pending_v1', SRVMODE={}, PENDING=[];
+function ghToken(){ try { return localStorage.getItem(TKEY)||''; } catch(e){ return ''; } }
+try { PENDING=JSON.parse(localStorage.getItem(PKEY))||[]; } catch(e){ PENDING=[]; }
+function savePending(){ try { localStorage.setItem(PKEY, JSON.stringify(PENDING)); } catch(e){} }
+function pendingFor(code, op){ for (var k=PENDING.length-1;k>=0;k--){ var p=PENDING[k]; if (p.code===code && p.op===op) return p; } return null; }
+function ghDispatch(t, ops){
+  return fetch('https://api.github.com/repos/Maldugi00/stock-board/actions/workflows/edit.yml/dispatches', {method:'POST', keepalive:true,
+    headers:{'Authorization':'Bearer '+t, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'},
+    body:JSON.stringify({ref:'main', inputs:{ops:JSON.stringify(ops.map(function(o){ return {op:o.op, code:o.code, group:o.group, name:o.name, mode:o.mode}; }))}})});
+}
+function ghEdit(ops){
+  var t=ghToken(); if (!t) return false;
+  if (navigator.onLine===false){ toast('오프라인이라 저장하지 못했어요. 연결되면 다시 눌러 주세요.'); return true; }
+  var now=Date.now();
+  ops.forEach(function(o){ PENDING=PENDING.filter(function(p){ return !(p.code===o.code && (p.op===o.op || o.op==='remove' || p.op==='remove' || (o.op==='group'&&p.op==='add'))); }); PENDING.push({op:o.op, code:o.code, group:o.group, name:o.name, mode:o.mode, at:now}); });
+  savePending(); applyLists();
+  OUTBOX=OUTBOX.concat(ops); clearTimeout(OUTT); OUTT=setTimeout(flushEdits, 1500);     // 연달아 누른 편집은 한 번에 보낸다(순서 보장)
+  return true;
+}
+var OUTBOX=[], OUTT=null;
+window.addEventListener('pagehide', function(){ if (OUTBOX.length){ clearTimeout(OUTT); flushEdits(); } });   // 화면을 떠나도 보낸다
+function resendUnsent(){ var u=PENDING.filter(function(p){ return !p.sent && !p.late; }); if (!u.length || !ghToken()) return;
+  OUTBOX=OUTBOX.concat(u.map(function(p){ return {op:p.op, code:p.code, group:p.group, name:p.name, mode:p.mode}; })); clearTimeout(OUTT); OUTT=setTimeout(flushEdits, 800); }
+function flushEdits(){
+  var t=ghToken(), ops=OUTBOX, codes={}; OUTBOX=[]; if (!t || !ops.length) return;
+  ops.forEach(function(o){ codes[o.code+o.op]=1; });
+  ghDispatch(t, ops).then(function(r){
+    if (r.status===204){ PENDING.forEach(function(p){ if (codes[p.code+p.op]) p.sent=true; }); savePending(); return; }
+    PENDING=PENDING.filter(function(p){ return !codes[p.code+p.op]; }); savePending(); applyLists();
+    toast(r.status===401||r.status===403||r.status===404 ? '토큰이 맞지 않거나 권한이 없어요. 동기화 설정을 확인해 주세요.' : '저장하지 못했어요 (응답 '+r.status+').');
+  }).catch(function(){ PENDING=PENDING.filter(function(p){ return !codes[p.code+p.op]; }); savePending(); applyLists(); toast('연결이 안 돼서 저장하지 못했어요.'); });
+}
+function resolvePending(){
+  var by={}, now=Date.now(); ALL.forEach(function(s){ by[s.code]=s; });
+  PENDING=PENDING.filter(function(p){ var s=by[p.code];
+    var ok = p.op==='add' ? !!(s && s.group0===p.group) : p.op==='remove' ? (!s || s.group0==='trade') : p.op==='group' ? !!(s && s.group0===p.group) : p.op==='mode' ? SRVMODE[p.code]===p.mode : true;
+    if (!ok && now-p.at>30*60*1000) p.late=true;
+    return !ok; });
+  savePending();
+}
+function applyLists(){ if (!ALL.length) return; var cur=STOCKS[state.i]&&STOCKS[state.i].code; buildList(); var j=-1; STOCKS.forEach(function(s,k){ if (s.code===cur) j=k; }); state.i=j<0?0:j; renderRows(); if (typeof renderRec==='function') renderRec(); renderSync(); }
+function renderSync(){
+  var el=$('sync-box'); if (!el) return; var t=ghToken(), late=PENDING.filter(function(p){ return p.late; }).length;
+  el.innerHTML='<p class="hint" style="margin:6px 0 0">'+(t ? '편집(추가·옮기기·삭제·신호 방식)은 <b>저장소에 저장</b>돼요. 폰을 바꿔도 그대로입니다.' : '지금은 편집이 <b>이 폰에만</b> 저장돼요. 토큰을 넣으면 저장소에 저장되고, 추천 종목도 바로 추가할 수 있어요.')+
+    (PENDING.length ? ' 반영 중 '+PENDING.length+'건'+(late?' (30분 넘게 반영 안 된 것 '+late+'건 · <button class="lnk" data-sync-clear>지우기</button>)':'')+'.' : '')+
+    ' <button class="btn sm" data-sync-open>'+(t?'동기화 설정':'저장소 동기화 설정')+'</button>'+(t?'':' <button class="btn sm" id="reset-btn" hidden>처음 목록으로</button>')+'</p>'+
+    (state.syncOpen ? '<div class="panel brief" style="margin-top:8px"><b style="font-size:13px">GitHub 토큰</b>'+
+      '<p class="hint" style="margin:6px 0">stock-board 저장소의 <b>Actions 읽기·쓰기</b>만 있는 토큰을 넣어 주세요. cron-job.org용과 따로 만드는 걸 권해요(폰을 잃어버리면 이 토큰만 지우면 됩니다). 토큰은 이 폰 브라우저에만 저장되고 화면에 다시 보이지 않아요.</p>'+
+      '<input id="tok-in" type="password" autocomplete="off" placeholder="'+(t?'저장됨 · 바꾸려면 새로 붙여넣기':'github_pat_...')+'" style="width:100%;box-sizing:border-box;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit">'+
+      '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn sm" data-tok-save>저장하고 확인</button>'+(t?'<button class="btn sm" data-tok-del>토큰 지우기</button>':'')+'<button class="btn sm" data-sync-open>닫기</button></div></div>' : '');
+}
+function saveToken(){
+  var v=($('tok-in')||{}).value||''; v=v.trim(); if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(v)){ toast('토큰 모양이 아니에요. github_pat_ 로 시작하는 값을 붙여넣어 주세요.'); return; }
+  fetch('https://api.github.com/repos/Maldugi00/stock-board/actions/workflows/edit.yml', {headers:{'Authorization':'Bearer '+v, 'Accept':'application/vnd.github+json'}})
+    .then(function(r){
+      if (r.status!==200){ toast('이 토큰으로 저장소 작업을 볼 수 없어요 (응답 '+r.status+'). 저장소와 Actions 권한을 확인해 주세요.'); return; }
+      try { localStorage.setItem(TKEY, v); } catch(e){}
+      state.syncOpen=false;
+      var ops=[];                                      // 이 폰에만 있던 구분·신호 방식을 저장소로 옮긴다
+      ALL.forEach(function(s){ var g=saved.groups[s.code]; if (g && g!==s.group0 && s.group0!=='trade') ops.push({op:'group', code:s.code, group:g});
+        var m=saved.modes&&saved.modes[s.code]; if (m && m!==(SRVMODE[s.code]||'def')) ops.push({op:'mode', code:s.code, mode:m}); });
+      saved.groups={}; saved.modes={}; persist();
+      if (ops.length){ ghEdit(ops); toast('저장했어요. 이 폰에만 있던 설정 '+ops.length+'건을 저장소로 옮기는 중이에요.'); } else { toast('저장했어요. 이제 편집이 저장소에 저장돼요.'); applyLists(); }
+    }).catch(function(){ toast('연결이 안 돼서 확인하지 못했어요.'); });
 }
 
 /* ── 시장 지수·섹터 ── */
@@ -815,9 +900,11 @@ function renderSectTop(){
   var src=SECTORS.sectors.filter(function(s){ return s.code===t.code; })[0]||{}, parts=(src.parts||[]).slice(0,5);
   var rows=parts.map(function(p,k){ var u=p.pct>=0, open=k===state.top;
     return '<article><span class="rk">'+(k+1)+'</span><button class="tsel" data-top="'+k+'" aria-expanded="'+open+'"><span class="nm">'+esc(p.name)+' <span class="hint">'+(open?'▴':'▾')+'</span></span><span class="sub">ETF 안 비중 '+p.weight.toFixed(1)+'%</span></button>'+
+      (SPARKS[p.code]?'<span class="tsp">'+recSpark(SPARKS[p.code],64,26)+'</span>':'')+
       '<span class="rt"><span class="'+(u?'up':'down')+'">'+(u?'+':'')+p.pct.toFixed(2)+'%</span><br><span class="hint">오늘</span></span>'+
       (open?'<div class="fin">'+briefHTML(FINP[p.code])+newsLink(p.name)+'</div>':'')+'</article>'; }).join('');
   $('sect-top').innerHTML='<div class="sec-head" style="margin-bottom:0"><h3>'+t.name+' 상위 5종목</h3><span class="hint">대표 ETF 비중 순</span></div>'+
+    '<p class="hint" style="margin:6px 0 0">오른쪽 작은 그래프는 최근 약 6개월 종가 흐름이에요 (빨강 = 6개월 전보다 높음, 파랑 = 낮음).</p>'+
     '<p class="read" style="--c:var(--blue);margin-top:8px"><b>'+t.state+'</b> 5일 '+pc(t.r5)+' · 20일 '+pc(t.r20)+' · 60일 '+pc(t.r60)+'. '+esc(t.outlook)+'.</p>'+
     (rows?'<div class="top3">'+rows+'</div>':'<p class="hint" style="margin:8px 0 0">구성 종목을 아직 받지 못했어요.</p>');
 }
@@ -1060,7 +1147,7 @@ function drawCorp(){
   tagAt(T.max,'최고',C.up); tagAt(T.avg,'평균',C.core); tagAt(T.min,'최저',C.down);
   var now='현재 '+fmt(s.base); g.fillStyle=C.ink; g.fillRect(split-2,yn-9,g.measureText(now).width+12,18); g.fillStyle='#0b0f15'; g.fillText(now,split+4,yn);
 }
-var REC=null;
+var REC=null, SPARKS={};
 /* ── 추천 종목: 전 종목 스크리닝 결과 (규칙으로 고른 후보) ── */
 function recSpark(v, w, h){
   w=w||88; h=h||30; if (!v || v.length<2) return '';
@@ -1082,7 +1169,9 @@ function renderRec(){
       '<div class="rbar" title="실적 '+x.escore+'점 + 주가 '+x.pscore+'점"><span style="width:'+x.escore+'%;background:var(--blue)"></span><span style="width:'+x.pscore+'%;background:var(--accent)"></span><em>'+x.score+'점</em></div>'+
       '<dl class="bl"><div><dt>실적</dt><dd>'+esc(x.ewhy)+'</dd></div><div><dt>주가</dt><dd>'+esc(x.pwhy)+' · 60일선과 '+pc(f.ext60||0)+', 20일 '+pc(f.r20||0)+'</dd></div>'+
       (x.signals&&x.signals.length?'<div><dt>변화</dt><dd>'+x.signals.map(esc).join(' · ')+'</dd></div>':'')+
-      (t?'<div><dt>추적</dt><dd><span class="'+VC[t.verdict]+'">'+esc(t.vtext)+'</span></dd></div>':'')+'</dl></article>'; };
+      (t?'<div><dt>추적</dt><dd><span class="'+VC[t.verdict]+'">'+esc(t.vtext)+'</span></dd></div>':'')+'</dl>'+
+      (pendingFor(x.code,'add') ? '<p class="hint" style="margin:8px 0 0">'+(pendingFor(x.code,'add').group==='mine'?'내 종목':'관심종목')+'에 추가하는 중 · 데이터 정리중</p>' :
+       '<div class="ract"><button class="btn sm" data-add="'+x.code+'" data-g="watch" data-name="'+esc(x.name)+'">관심에 추가</button><button class="btn sm" data-add="'+x.code+'" data-g="mine" data-name="'+esc(x.name)+'">내 종목에 추가</button></div>')+'</article>'; };
   var st=state.recg||'A', list=items.filter(function(x){ return x.grade===st; });
   var cnt=function(g){ return items.filter(function(x){ return x.grade===g; }).length; };
   var rows=list.map(function(x,k){ var open=state.reco===x.code;
@@ -1229,11 +1318,18 @@ document.addEventListener('click', function(e){
   var el=e.target.closest('button'); if(!el || !STOCKS.length) return;
   if (el.dataset.pick!=null){ $('pick').hidden=true; selectStock(+el.dataset.pick); setPage('b'); }
   else if (el.dataset.del!=null){ removeStock(+el.dataset.del); renderBrief(); renderBook(); }
+  else if (el.dataset.add){ var nm=el.dataset.name;
+    if (ghEdit([{op:'add', code:el.dataset.add, group:el.dataset.g, name:nm}])) toast(nm+' 추가 중이에요. 데이터가 모일 때까지 "데이터 정리중"으로 보여요.');
+    else { state.syncOpen=true; renderSync(); toast('추천 종목을 추가하려면 저장소 동기화 토큰을 먼저 넣어 주세요.'); var b=$('sync-box'); if (b) b.scrollIntoView({block:'center'}); } }
+  else if (el.hasAttribute('data-sync-open')){ state.syncOpen=!state.syncOpen; renderSync(); }
+  else if (el.hasAttribute('data-tok-save')){ saveToken(); }
+  else if (el.hasAttribute('data-tok-del')){ try { localStorage.removeItem(TKEY); } catch(e){} state.syncOpen=false; applyLists(); toast('이 폰에서 토큰을 지웠어요. GitHub에서도 토큰을 삭제하면 완전히 무효가 돼요.'); }
+  else if (el.hasAttribute('data-sync-clear')){ PENDING=PENDING.filter(function(p){ return !p.late; }); savePending(); applyLists(); }
   else if (el.dataset.recg){ state.recg=el.dataset.recg; state.reco=null; renderRec(); }
   else if (el.dataset.reco){ state.reco = state.reco===el.dataset.reco ? null : el.dataset.reco; renderRec(); }
   else if (el.dataset.book){ state.book=el.dataset.book; renderBook(); }
-  else if (el.dataset.mode){ var ms=STOCKS[state.i]; if (ms.A[el.dataset.mode] && ms.mode!==el.dataset.mode){ ms.mode=el.dataset.mode; ms.a=ms.A[ms.mode]; if (!saved.modes) saved.modes={}; saved.modes[ms.code]=ms.mode; persist(); describe(ms); renderRows(); renderQuote(); renderTalk(); renderDetail(); renderPlan(); renderBrief(); renderBook(); toast(ms.name+' 신호를 '+MODES[ms.mode].name+'으로 바꿨어요.'); } }
-  else if (el.classList.contains('edit-btn')){ state.edit=!state.edit; each('.edit-btn', function(b){ b.textContent=state.edit?'완료':'편집'; b.setAttribute('aria-pressed',state.edit); }); $('reset-btn').hidden=!state.edit; renderRows(); }
+  else if (el.dataset.mode){ var ms=STOCKS[state.i]; if (ms.A[el.dataset.mode] && ms.mode!==el.dataset.mode){ ms.mode=el.dataset.mode; ghEdit([{op:'mode', code:ms.code, mode:ms.mode}]); ms.a=ms.A[ms.mode]; if (!saved.modes) saved.modes={}; saved.modes[ms.code]=ms.mode; persist(); describe(ms); renderRows(); renderQuote(); renderTalk(); renderDetail(); renderPlan(); renderBrief(); renderBook(); toast(ms.name+' 신호를 '+MODES[ms.mode].name+'으로 바꿨어요.'); } }
+  else if (el.classList.contains('edit-btn')){ state.edit=!state.edit; each('.edit-btn', function(b){ b.textContent=state.edit?'완료':'편집'; b.setAttribute('aria-pressed',state.edit); }); var rb=$('reset-btn'); if (rb) rb.hidden=!state.edit; renderRows(); }
   else if (el.id==='reset-btn'){ saved=fresh(); persist(); buildList(); selectStock(0); toast('처음 목록으로 되돌렸어요.'); }
   else if (el.classList.contains('row')){ selectStock(+el.dataset.i); setPage('b'); }
   else if (el.classList.contains('pg')){ $('pick').hidden=true; setPage(el.dataset.pg); }
@@ -1260,15 +1356,17 @@ function setNotes(){
   $('notice').textContent = reduce ? NOTES[0] : NOTES[noteI%NOTES.length];
 }
 function loadAll(){
-  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; }), getJSON('screen/result.json').catch(function(){ return null; })]).then(function(r){
+  return Promise.all([getJSON('list.json'), getJSON('market.json'), getJSON('sectors.json').catch(function(){ return null; }), getJSON('meta.json').catch(function(){ return null; }), getJSON('fin_parts.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getBrief(), getJSON('trade/public.json').catch(function(){ return null; }), getJSON('screen/result.json').catch(function(){ return null; }), getJSON('screen/sparks.json').catch(function(){ return null; })]).then(function(r){
+    SPARKS = (r[9] && r[9].items) || {};
     REC = r[8] && r[8].items ? r[8] : null;
     BRIEF = r[6] && r[6].headline ? r[6] : null; TRADE = r[7] && r[7].slots ? r[7] : null;
     MARKET=r[1]; SECTORS=r[2]; META=r[3]; FINP=(r[4]&&r[4].items)||{}; buildBoard();
     MKTOK = r[5]&&r[5].rows&&r[5].rows.length>80 ? KRT.marketOk(r[5].rows.map(function(x){ return [ymd(x[0]), x[1]]; })) : null;
-    return Promise.all(r[0].stocks.map(function(m){ return getJSON('stocks/'+m.code+'.json').then(function(d){ return [m,d]; }); }));
+    r[0].stocks.forEach(function(m){ SRVMODE[m.code]=m.mode||null; });
+    return Promise.all(r[0].stocks.map(function(m){ return getJSON('stocks/'+m.code+'.json').then(function(d){ return [m,d]; }).catch(function(){ return [m,null]; }); }));
   }).then(function(pairs){
     var cur=STOCKS.length ? STOCKS[state.i].code : null; cache={};
-    ALL=pairs.map(function(p,i){ return buildStock(p[0],p[1],i); }); buildList();
+    ALL=pairs.filter(function(p){ return p[1]; }).map(function(p,i){ return buildStock(p[0],p[1],i); }); resolvePending(); resendUnsent(); buildList(); renderSync();
     var i=0; STOCKS.forEach(function(s,k){ if (s.code===cur) i=k; });
     renderRec();
     if (!started){ started=true; renderMarket(); renderSect(); selectStock(i); if (window.innerWidth>=700) setSide(true); if (!reduce) requestAnimationFrame(loop); }

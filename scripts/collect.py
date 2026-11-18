@@ -487,7 +487,7 @@ def main():
         d["ts"] = ts
         save(f"stocks/{code}.json", d)
         q = d["quote"] or {}
-        listing.append({"code": code, "name": s["name"], "type": s["type"], "group": s["group"], "price": q.get("price"),
+        listing.append({"code": code, "name": s["name"], "type": s["type"], "group": s["group"], "mode": s.get("mode"), "price": q.get("price"),
                         "change": q.get("change"), "pct": q.get("pct"), "spark": [b[4] for b in d["m1"]][::10] or [r[4] for r in d["daily"][-20:]]})
         print(f"{s['name']}: 1분봉 {len(d['m1'])}개, 일봉 {len(d['daily'])}개, 30분봉 {len(m30)}일치")
     save("list.json", {"updated": meta["updated"], "stocks": listing})

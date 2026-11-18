@@ -491,7 +491,13 @@ def main():
         return 0
     k = c.Kis(t)
     tracked = [code for code, t in c.load("screen/track.json", {"items": {}})["items"].items() if not t.get("closed") and code not in exclude]
+    try:                                                       # 섹터 상위 종목 차트용
+        sect = json.load(open(os.path.join(c.ROOT, "sectors.json"), encoding="utf-8"))
+        parts = [p["code"] for s2 in sect.get("sectors", []) for p in (s2.get("parts") or [])[:5]]
+    except (OSError, ValueError):
+        parts = []
     fetch = [x["code"] for x in cands] + [code for code in tracked if code not in {x["code"] for x in cands}]
+    fetch += [code for code in dict.fromkeys(parts) if code not in set(fetch)]
     prices, fresh = price_data(k, fetch, START + PX_MIN * 60)
     if missing:
         print(f"일봉: {len(prices)}종목 보유 (이번에 받은 것 {fresh}). 실적이 다 모이면 등급을 매깁니다.")
@@ -503,6 +509,8 @@ def main():
         mkt = {}
     names = industry_names()
     graded, excl, feats = grade_all(items, prices, mkt, names, exclude)
+    c.save("screen/sparks.json", {"updated": c.NOW.strftime("%Y-%m-%d %H:%M"),
+                                  "items": {code: [r[3] for r in prices[code][-120:]] for code in dict.fromkeys(parts) if code in prices}})
     cnt = {g2: sum(1 for y in graded if y["grade"] == g2) for g2 in "ABC"}
     picks = [y["code"] for y in graded if y["grade"] == "A"][:3]
     if len(picks) < 3:
