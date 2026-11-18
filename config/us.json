@@ -1,0 +1,7 @@
+{
+  "stocks": [
+    {"code": "NVDA", "ex": "NAS", "name": "엔비디아", "group": "watch"},
+    {"code": "AAPL", "ex": "NAS", "name": "애플", "group": "watch"},
+    {"code": "TSLA", "ex": "NAS", "name": "테슬라", "group": "watch"}
+  ]
+}

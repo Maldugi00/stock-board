@@ -1,6 +1,6 @@
 name: 종목 편집
 
-# 사이트의 편집 버튼(추가·이동·삭제·신호 방식)이 부르는 작업. config/stocks.json 만 바꾼다.
+# 사이트의 편집 버튼(추가·이동·삭제·신호 방식)이 부르는 작업. config/stocks.json(국내)과 config/us.json(미국)만 바꾼다.
 on:
   workflow_dispatch:
     inputs:
@@ -29,10 +29,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             git fetch -q origin main && git reset -q --hard origin/main
-            python3 scripts/edit.py
+            : > "$RUNNER_TEMP/out"
+            GITHUB_OUTPUT="$RUNNER_TEMP/out" python3 scripts/edit.py
             if git diff --quiet; then echo "바뀐 것 없음"; exit 0; fi
             git commit -q -am "사이트에서 종목 편집"
-            if git push -q origin HEAD:main; then gh workflow run collect.yml --ref main; exit 0; fi
+            if git push -q origin HEAD:main; then
+              if grep -q '^kr=1' "$RUNNER_TEMP/out"; then gh workflow run collect.yml --ref main; fi
+              if grep -q '^us=1' "$RUNNER_TEMP/out"; then gh workflow run collect_us.yml --ref main; fi
+              exit 0
+            fi
             sleep $((i * 3))
           done
           echo "저장하지 못했습니다"; exit 1

@@ -1,0 +1,42 @@
+name: 미국 데이터 수집
+
+# cron-job.org 가 미국장 시간(한국 시각 밤~새벽)에 10분마다 부른다. 국내 수집과 같은 줄(collect)에 서서 겹치지 않는다.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 지난 데이터 불러오기
+        run: |
+          mkdir -p data
+          if git fetch --depth 1 origin data 2>/dev/null; then
+            git archive FETCH_HEAD | tar -x -C data
+          fi
+      - name: 미국 수집
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          DATA_DIR: data
+        run: python3 -u scripts/collect_us.py
+      - name: 데이터 가지에 저장 (국내 데이터와 함께 최신 한 벌만 둔다)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd data
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "미국 데이터 갱신 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
