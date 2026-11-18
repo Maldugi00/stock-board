@@ -19,31 +19,35 @@
       "name": "삼성전자",
       "type": "stock",
       "group": "mine",
-      "mode": "def"
+      "mode": "trend"
     },
     {
       "code": "000660",
       "name": "SK하이닉스",
       "type": "stock",
-      "group": "mine"
+      "group": "mine",
+      "mode": "trend"
     },
     {
       "code": "122630",
       "name": "KODEX 레버리지",
       "type": "etf",
-      "group": "mine"
+      "group": "mine",
+      "mode": "trend"
     },
     {
       "code": "494310",
       "name": "KODEX 반도체레버리지",
       "type": "etf",
-      "group": "mine"
+      "group": "mine",
+      "mode": "trend"
     },
     {
       "code": "005380",
       "name": "현대차",
       "type": "stock",
-      "group": "watch"
+      "group": "watch",
+      "mode": "trend"
     },
     {
       "code": "035420",
