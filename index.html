@@ -76,6 +76,10 @@ button{cursor:pointer}
 .rrow .rsp{width:64px;height:24px}
 .rrow .rs{font-family:var(--font-mono);font-size:13px;color:var(--ink);min-width:28px;text-align:right}
 .muted{color:var(--muted)}
+.sw{display:flex;gap:4px;border:1px solid var(--line);border-radius:999px;padding:3px}
+.sw a{font-size:13px;padding:5px 14px;border-radius:999px;color:#aab3bf;text-decoration:none}
+.sw a[aria-current=page]{background:rgba(194,103,58,.14);color:var(--accent)}
+.toprow{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .ract{display:flex;gap:6px;margin-top:10px}
 .row.pend{opacity:.55;cursor:default}
 .top3 article{grid-template-columns:26px minmax(0,1fr) auto auto !important}
@@ -356,7 +360,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.9.3</div>
+    <div class="toprow"><nav class="sw" aria-label="시장 전환"><a href="./" aria-current="page">국내</a><a href="us.html">미국</a></nav><div class="ver mono">v2.0.0</div></div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
