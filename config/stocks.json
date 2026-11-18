@@ -1,30 +1,109 @@
 {
   "indices": [
-    {"code": "0001", "name": "KOSPI"},
-    {"code": "1001", "name": "KOSDAQ"},
-    {"code": "2001", "name": "KOSPI200"}
+    {
+      "code": "0001",
+      "name": "KOSPI"
+    },
+    {
+      "code": "1001",
+      "name": "KOSDAQ"
+    },
+    {
+      "code": "2001",
+      "name": "KOSPI200"
+    }
   ],
   "stocks": [
-    {"code": "005930", "name": "삼성전자", "type": "stock", "group": "mine"},
-    {"code": "000660", "name": "SK하이닉스", "type": "stock", "group": "mine"},
-    {"code": "122630", "name": "KODEX 레버리지", "type": "etf", "group": "mine"},
-    {"code": "494310", "name": "KODEX 반도체레버리지", "type": "etf", "group": "mine"},
-    {"code": "005380", "name": "현대차", "type": "stock", "group": "watch"},
-    {"code": "035420", "name": "NAVER", "type": "stock", "group": "watch"}
+    {
+      "code": "005930",
+      "name": "삼성전자",
+      "type": "stock",
+      "group": "mine",
+      "mode": "def"
+    },
+    {
+      "code": "000660",
+      "name": "SK하이닉스",
+      "type": "stock",
+      "group": "mine"
+    },
+    {
+      "code": "122630",
+      "name": "KODEX 레버리지",
+      "type": "etf",
+      "group": "mine"
+    },
+    {
+      "code": "494310",
+      "name": "KODEX 반도체레버리지",
+      "type": "etf",
+      "group": "mine"
+    },
+    {
+      "code": "005380",
+      "name": "현대차",
+      "type": "stock",
+      "group": "watch"
+    },
+    {
+      "code": "035420",
+      "name": "NAVER",
+      "type": "stock",
+      "group": "watch"
+    }
   ],
-  "sector_market": {"code": "069500", "name": "KOSPI200 (KODEX 200)"},
+  "sector_market": {
+    "code": "069500",
+    "name": "KOSPI200 (KODEX 200)"
+  },
   "sectors": [
-    {"code": "091160", "name": "반도체"},
-    {"code": "305720", "name": "2차전지"},
-    {"code": "091180", "name": "자동차"},
-    {"code": "091170", "name": "은행"},
-    {"code": "102970", "name": "증권"},
-    {"code": "244580", "name": "바이오"},
-    {"code": "117460", "name": "에너지화학"},
-    {"code": "117680", "name": "철강"},
-    {"code": "117700", "name": "건설"},
-    {"code": "466920", "name": "조선"},
-    {"code": "449450", "name": "방산"},
-    {"code": "229200", "name": "코스닥150"}
+    {
+      "code": "091160",
+      "name": "반도체"
+    },
+    {
+      "code": "305720",
+      "name": "2차전지"
+    },
+    {
+      "code": "091180",
+      "name": "자동차"
+    },
+    {
+      "code": "091170",
+      "name": "은행"
+    },
+    {
+      "code": "102970",
+      "name": "증권"
+    },
+    {
+      "code": "244580",
+      "name": "바이오"
+    },
+    {
+      "code": "117460",
+      "name": "에너지화학"
+    },
+    {
+      "code": "117680",
+      "name": "철강"
+    },
+    {
+      "code": "117700",
+      "name": "건설"
+    },
+    {
+      "code": "466920",
+      "name": "조선"
+    },
+    {
+      "code": "449450",
+      "name": "방산"
+    },
+    {
+      "code": "229200",
+      "name": "코스닥150"
+    }
   ]
 }
