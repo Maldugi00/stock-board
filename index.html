@@ -356,7 +356,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.9.2</div>
+    <div class="ver mono">v1.9.3</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -729,8 +729,9 @@ function renderMarket(){
   var ix=MARKET.indices, two=ix.slice(0,2), k200=ix[2];
   $('idx').innerHTML=two.map(function(x,k){ var u=x.pct>=0; return '<article><div class="k">'+x.name+'</div><div class="v '+(u?'up':'down')+'">'+x.price.toLocaleString('ko-KR',{minimumFractionDigits:2})+'</div><div class="c '+(u?'up':'down')+'">'+(u?'▲ ':'▼ ')+sgn(x.pct)+'</div><canvas id="cv-idx'+k+'" aria-label="'+x.name+' 오늘 흐름"></canvas></article>'; }).join('');
   var rows=[]; if (k200) rows.push(['KOSPI200', k200.price.toLocaleString('ko-KR',{minimumFractionDigits:2})+' <span class="'+(k200.pct>=0?'up':'down')+'">'+sgn(k200.pct)+'</span>']);
-  if (FX && FX.usdkrw){ var fu=FX.usdkrw; rows.push(['원/달러 환율', fu.price.toLocaleString('ko-KR',{minimumFractionDigits:1, maximumFractionDigits:1})+' <span class="'+(fu.change>0?'up':fu.change<0?'down':'muted')+'">'+(fu.change>0?'+':'')+fu.change.toFixed(1)+'원</span>']); }
-  two.forEach(function(x){ rows.push([x.name+' 오른/내린 종목', '<span class="up">'+x.up+'</span> / <span class="down">'+x.down+'</span>']); });
+  if (FX && FX.usdkrw){ var fu=FX.usdkrw; rows.push(['원/달러', fu.price.toLocaleString('ko-KR',{minimumFractionDigits:1, maximumFractionDigits:1})+' <span class="'+(fu.change>0?'up':fu.change<0?'down':'muted')+'">'+(fu.change>0?'+':'')+fu.change.toFixed(1)+'원</span>']); }
+  if (FX && FX.us) FX.us.forEach(function(x){ rows.push([(x.code==='SOX'?'미 반도체 SOX':'미 다우'), Math.round(x.price).toLocaleString('ko-KR')+' <span class="'+(x.pct>0?'up':x.pct<0?'down':'muted')+'">'+(x.pct>0?'+':'')+x.pct.toFixed(2)+'%</span>']); });
+  two.forEach(function(x){ rows.push([(x.name==='KOSDAQ'?'코스닥':'코스피')+' 오름/내림', '<span class="up">'+x.up+'</span> / <span class="down">'+x.down+'</span>']); });
   rows.push(['데이터 기준', MARKET.updated.slice(5)]);
   $('mini').innerHTML=rows.map(function(m){ return '<div><b>'+m[0]+'</b><span>'+m[1]+'</span></div>'; }).join('');
   var a=two[0].pct>=0, b=two[1].pct>=0, wide=two[0].up+two[0].down ? two[0].up/(two[0].up+two[0].down) : 0.5;
@@ -832,6 +833,10 @@ function renderBrief(){
     var arrow=u.change>0?'<span class="up">+'+u.change.toFixed(1)+'원 (+'+u.pct.toFixed(2)+'%)</span>':u.change<0?'<span class="down">'+u.change.toFixed(1)+'원 ('+u.pct.toFixed(2)+'%)</span>':'<span class="muted">변동 없음</span>';
     L.push(['환율', '원/달러 '+f1(u.price)+'원, 전일보다 '+arrow+'. '+(ago?'1주일 전('+f1(ago)+'원)보다 '+(u.price<ago?'원화가 강해졌어요':'원화가 약해졌어요')+'. ':'')+(hi?'최근 20거래일 범위는 '+f1(lo)+'~'+f1(hi)+'원이에요. ':'')+
       '환율이 내리면(원화 강세) 외국인 자금이 들어오기 쉽고, 오르면(원화 약세) 빠지기 쉬운 편이에요. 수출 비중이 큰 반도체·자동차는 원화 약세가 실적에는 도움이 되기도 합니다.']); }
+  if (FX && FX.us && FX.us.length){ var us=FX.us, sx=us.filter(function(x){ return x.code==='SOX'; })[0];
+    var fu2=function(x){ return x.name+' <span class="'+(x.pct>0?'up':x.pct<0?'down':'muted')+'">'+(x.pct>0?'+':'')+x.pct.toFixed(2)+'%</span>'; };
+    L.push(['미국', '간밤('+String(us[0].date).slice(4,6)+'/'+String(us[0].date).slice(6,8)+' 마감) '+us.map(fu2).join(', ')+'. '+
+      (sx ? (sx.pct<=-2 ? '미국 반도체주가 크게 빠져서 오늘 국내 반도체주에도 부담이 될 수 있어요.' : sx.pct>=2 ? '미국 반도체주가 크게 올라서 오늘 국내 반도체주에 힘이 될 수 있어요.' : '미국 반도체주 움직임은 크지 않았어요.')+' 내 종목이 반도체 위주라 이 지수를 같이 보시면 좋아요.' : '')]); }
   if (FLOW && FLOW.kospi && FLOW.kospi.length){ var fa=FLOW.kospi[0], fb=(FLOW.kosdaq||[])[0], five=FLOW.kospi.slice(0,5);
     var fe=function(v){ v=Math.round(v); return '<span class="'+(v>0?'up':v<0?'down':'muted')+'">'+(v>0?'+':'')+fmt(v)+'억</span>'; };
     var s5=five.reduce(function(t,x){ return t+x.frgn; },0), sells=five.filter(function(x){ return x.frgn<0; }).length, isToday=String(fa.d)===day;

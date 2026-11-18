@@ -314,6 +314,19 @@ def fx_usdkrw(k):
     return {"price": price, "change": num(o.get("ovrs_nmix_prdy_vrss")), "pct": num(o.get("prdy_ctrt")), "days": days[:30]}
 
 
+def us_index(k, code, name):
+    """미국 지수 일별 종가 (해외지수 = N). 현재값 칸이 0으로 올 때가 있어 일별 종가로 계산한다."""
+    d2, d1 = NOW.strftime("%Y%m%d"), (NOW - timedelta(days=45)).strftime("%Y%m%d")
+    js = k.get("/uapi/overseas-price/v1/quotations/inquire-daily-chartprice", "FHKST03030100",
+               {"FID_COND_MRKT_DIV_CODE": "N", "FID_INPUT_ISCD": code, "FID_INPUT_DATE_1": d1, "FID_INPUT_DATE_2": d2,
+                "FID_PERIOD_DIV_CODE": "D"}, name)
+    days = [[r["stck_bsop_date"], num(r.get("ovrs_nmix_prpr"))] for r in (js or {}).get("output2") or [] if r.get("stck_bsop_date") and num(r.get("ovrs_nmix_prpr"))]
+    if len(days) < 2:
+        return None
+    (d, last), (_, prev) = days[0], days[1]
+    return {"code": code, "name": name, "date": d, "price": last, "change": round(last - prev, 2), "pct": round((last / prev - 1) * 100, 2), "days": days[:30]}
+
+
 def etf_parts(k, code):
     js = k.get("/uapi/etfetn/v1/quotations/inquire-component-stock-price", "FHKST121600C0",
                {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code, "FID_COND_SCR_DIV_CODE": "11216"}, f"ETF 구성 {code}")
@@ -544,7 +557,9 @@ def main():
     if EPOCH - old.get("ts", 0) >= 9 * 60 or not old.get("usdkrw"):
         fx = fx_usdkrw(k)
         if fx:
-            save("fx.json", {"updated": meta["updated"], "ts": EPOCH, "usdkrw": fx})
+            us = [x for x in (us_index(k, "SOX", "필라델피아 반도체"), us_index(k, ".DJI", "다우")) if x] if (EPOCH - old.get("us_ts", 0) >= 30 * 60 or not old.get("us")) else old.get("us", [])
+            save("fx.json", {"updated": meta["updated"], "ts": EPOCH, "usdkrw": fx, "us": us,
+                             "us_ts": EPOCH if us is not old.get("us") else old.get("us_ts", 0)})
 
     # 투자자별(외국인·기관·개인) 매매동향: 10분마다
     old = load("flow.json", {})
