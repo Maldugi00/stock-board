@@ -349,7 +349,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="ver mono">v1.8</div>
+    <div class="ver mono">v1.8.1</div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -760,7 +760,8 @@ function renderBrief(){
   news.forEach(function(n){ n.rel=kw.test(n.title)?1:0; });
   news.sort(function(a,b){ return b.rel-a.rel || (String(b.d)+b.t).localeCompare(String(a.d)+a.t); });
   var cb='';
-  if (BRIEF){ var bd=(BRIEF.updated||'').slice(0,10), same=bd===(MARKET.updated||'').slice(0,10), slot={pre:'장 시작 전',mid:'장중',post:'마감 뒤'}[BRIEF.slot]||'';
+  var todayK=new Date(Date.now()+9*36e5).toISOString().slice(0,10);
+  if (BRIEF && (BRIEF.updated||'').slice(0,10)===todayK){ var bd=(BRIEF.updated||'').slice(0,10), same=true, slot={pre:'장 시작 전',mid:'장중',post:'마감 뒤'}[BRIEF.slot]||'';
     cb='<div class="cb"><div class="cbh"><b>Claude 브리핑</b><span>'+esc((BRIEF.updated||'').slice(5))+(slot?' · '+slot:'')+(same?'':' · 지난 브리핑')+'</span></div>'+
       '<p class="cbl">'+esc(BRIEF.headline)+'</p>'+
       '<dl class="bl">'+(BRIEF.points||[]).map(function(p){ return '<div><dt>'+esc(p.t)+'</dt><dd>'+esc(p.b)+'</dd></div>'; }).join('')+
