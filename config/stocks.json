@@ -48,12 +48,6 @@
       "type": "stock",
       "group": "watch",
       "mode": "trend"
-    },
-    {
-      "code": "035420",
-      "name": "NAVER",
-      "type": "stock",
-      "group": "watch"
     }
   ],
   "sector_market": {
