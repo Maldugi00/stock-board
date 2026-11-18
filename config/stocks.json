@@ -54,7 +54,7 @@
       "name": "IPARK현대산업개발",
       "type": "stock",
       "group": "watch",
-      "mode": "trend"
+      "mode": "def"
     }
   ],
   "sector_market": {
