@@ -55,6 +55,12 @@
       "type": "stock",
       "group": "watch",
       "mode": "trend"
+    },
+    {
+      "code": "086450",
+      "name": "동국제약",
+      "type": "stock",
+      "group": "watch"
     }
   ],
   "sector_market": {
