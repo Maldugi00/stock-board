@@ -42,7 +42,8 @@
       "code": "EVRG",
       "ex": "NAS",
       "name": "에버지",
-      "group": "watch"
+      "group": "watch",
+      "mode": "trend"
     }
   ]
 }
