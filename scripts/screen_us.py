@@ -26,6 +26,9 @@ UA = "stock-board personal dashboard Maldugi00@users.noreply.github.com"
 PX = "state/us_screen_px.json"
 UNIV = "state/us_universe2.json"
 FINANCE = ("Financials", "Financial")
+SECTOR_KO = {"Information Technology": "정보기술", "Health Care": "헬스케어", "Financials": "금융", "Consumer Discretionary": "경기소비재",
+             "Communication Services": "커뮤니케이션", "Industrials": "산업재", "Consumer Staples": "필수소비재", "Energy": "에너지",
+             "Utilities": "유틸리티", "Real Estate": "부동산", "Materials": "소재"}
 
 
 def http(url, timeout=60, tries=3):
@@ -290,8 +293,8 @@ def grade_all(items, rows, mkt, exclude):
         sig = [s.replace("코스피", "S&P500") for s in sig]
         out.append({"code": x["code"], "name": x["name"], "ex": x["ex"], "idx": x["idx"], "grade": grade, "score": x["score"] + ps,
                     "ecls": x["cls"], "ewhy": x["why"], "basis": x["basis"], "pstate": st, "pwhy": pwhy, "signals": sig,
-                    "ind": x["sector"], "ind_share": round(sec.get("share", 0), 2), "q": x["q"], "rev": x["rev"], "op": x["op"],
-                    "close": f["close"], "r20": round(f["r20"], 4), "rsi": round(f["rsi"], 1), "spark": f["spark"]})
+                    "ind": SECTOR_KO.get(x["sector"], x["sector"]), "ind_share": round(sec.get("share", 0), 2), "q": x["q"], "rev": x["rev"], "op": x["op"],
+                    "close": f["close"], "r20": round(f["r20"], 4), "rsi": round(f["rsi"], 1), "spark": [round(v, 2) for v in f["spark"][-60:]]})
     order = {"A": 0, "B": 1, "C": 2}
     out.sort(key=lambda y: (order[y["grade"]], -y["score"]))
     return out, excl, feats
@@ -407,7 +410,7 @@ def main():
     counts = {g: sum(1 for y in graded if y["grade"] == g) for g in "ABC"}
     counts.update(hot=len(excl), universe=len(uni), earn=cnt)
     c.save("us/screen/result.json", {"updated": c.NOW.strftime("%Y-%m-%d %H:%M"), "asof": asof, "counts": counts, "picks": picks,
-                                     "items": graded[:60], "hot": excl[:20], "track": trk})
+                                     "items": graded[:160], "hot": excl[:20], "track": trk})
     print(f"등급: {counts}, 추천 {picks}, {time.time() - t0:.0f}초", flush=True)
     return 0
 
