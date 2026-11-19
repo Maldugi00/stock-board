@@ -82,7 +82,11 @@ button{cursor:pointer}
 .toprow{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .ract{display:flex;gap:6px;margin-top:10px}
 .row.pend{opacity:.55;cursor:default}
-.top3 article{grid-template-columns:26px minmax(0,1fr) auto auto !important}
+.top3 article{grid-template-columns:26px minmax(0,1fr) auto auto 32px !important}
+.tadd{width:32px;padding:4px 0}
+.tin{font-size:11px;color:var(--muted);text-align:center}
+.ksb{margin-top:10px} .ksb input{width:100%;box-sizing:border-box;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.kres{list-style:none;margin:6px 0 0;padding:0} .kres li{display:flex;align-items:center;gap:6px;padding:8px 2px;border-bottom:1px solid var(--line)} .kres .kn{flex:1;min-width:0} .kres .kn b{display:block;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .kres .kn i{display:block;font-style:normal;font-size:11px;color:var(--muted)}
 .tsp{display:flex;align-items:center}
 .tsp .rsp{width:64px;height:26px}
 .del.arm{color:#fff;background:var(--up);border-color:var(--up)}
@@ -360,7 +364,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 
   <header class="top">
     <h1 class="sr">주식 관제 보드</h1>
-    <div class="toprow"><nav class="sw" aria-label="시장 전환"><a href="./" aria-current="page">국내</a><a href="us.html">미국</a></nav><div class="ver mono">v2.0.0</div></div>
+    <div class="toprow"><nav class="sw" aria-label="시장 전환"><a href="./" aria-current="page">국내</a><a href="us.html">미국</a></nav><div class="ver mono">v2.3.0</div></div>
     <div class="notice">
       <span class="nt-k">공지</span>
       <span class="nt-t" id="notice">데이터를 불러오는 중이에요.</span>
@@ -410,6 +414,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
   <section aria-labelledby="h-watch">
     <div class="sec-head"><h2 id="h-watch">관심종목</h2><button class="btn sm edit-btn" aria-pressed="false">편집</button></div>
     <ul class="rows" id="rows-w"></ul>
+    <div class="ksb"><input id="kr-s" type="search" placeholder="종목 찾아 넣기 (예: 삼성전자, 005930, 하이닉스)" autocomplete="off" enterkeyhint="search" aria-label="추가할 국내 종목 찾기"><ul class="kres" id="kr-res"></ul></div>
     <div id="sync-box"></div>
   </section>
 
@@ -915,6 +920,7 @@ function briefHTML(f){
     '<div><dt>순이익</dt><dd>'+jo(f.net)+'</dd></div><div><dt>부채비율</dt><dd>'+(debt==null?'–':debt.toFixed(0)+'%')+'</dd></div><div><dt>자본총계</dt><dd>'+jo(f.equity)+'</dd></div></dl>'+
     '<p class="read" style="--c:var(--blue)"><b>한 줄 요약</b> '+(mg==null?'':(mg>=10?'영업이익률이 10%를 넘어 수익성이 좋은 편이에요. ':(mg<0?'영업손실 상태예요. ':'영업이익률이 한 자릿수라 수익성은 평범해요. ')))+(debt==null?'':(debt>500?'은행·증권·보험 같은 금융회사는 예금 등이 부채로 잡혀 부채비율이 높게 나오는 게 보통이에요.':(debt>150?'부채비율이 150%를 넘어 부담이 있는 편입니다.':'부채비율은 무리 없는 수준입니다.')))+'</p><div style="height:8px"></div>';
 }
+function haveKr(code){ return ALL.some(function(s){ return s.code===code && s.group0!=='trade' && !pendingFor(code,'remove'); }) || !!pendingFor(code,'add'); }
 function renderSectTop(){
   var t=BOARD.byWeek[state.sect]; if (!t) return;
   var src=SECTORS.sectors.filter(function(s){ return s.code===t.code; })[0]||{}, parts=(src.parts||[]).slice(0,5);
@@ -922,6 +928,7 @@ function renderSectTop(){
     return '<article><span class="rk">'+(k+1)+'</span><button class="tsel" data-top="'+k+'" aria-expanded="'+open+'"><span class="nm">'+esc(p.name)+' <span class="hint">'+(open?'▴':'▾')+'</span></span><span class="sub">ETF 안 비중 '+p.weight.toFixed(1)+'%</span></button>'+
       (SPARKS[p.code]?'<span class="tsp">'+recSpark(SPARKS[p.code],64,26)+'</span>':'')+
       '<span class="rt"><span class="'+(p.pct>0?'up':p.pct<0?'down':'muted')+'">'+(p.pct>0?'+':'')+p.pct.toFixed(2)+'%</span><br><span class="hint">오늘</span></span>'+
+      (haveKr(p.code)?'<span class="tin">담김</span>':'<button class="btn sm tadd" data-add="'+esc(p.code)+'" data-g="watch" data-name="'+esc(p.name)+'" aria-label="'+esc(p.name)+' 관심종목에 추가">＋</button>')+
       (open?'<div class="fin">'+briefHTML(FINP[p.code])+newsLink(p.name)+'</div>':'')+'</article>'; }).join('');
   $('sect-top').innerHTML='<div class="sec-head" style="margin-bottom:0"><h3>'+t.name+' 상위 5종목</h3><span class="hint">대표 ETF 비중 순</span></div>'+
     '<p class="hint" style="margin:6px 0 0">오른쪽 작은 그래프는 최근 약 6개월 종가 흐름이에요 (빨강 = 6개월 전보다 높음, 파랑 = 낮음).</p>'+
@@ -1339,8 +1346,8 @@ document.addEventListener('click', function(e){
   if (el.dataset.pick!=null){ $('pick').hidden=true; selectStock(+el.dataset.pick); setPage('b'); }
   else if (el.dataset.del!=null){ removeStock(+el.dataset.del); renderBrief(); renderBook(); }
   else if (el.dataset.add){ var nm=el.dataset.name;
-    if (ghEdit([{op:'add', code:el.dataset.add, group:el.dataset.g, name:nm}])) toast(nm+' 추가 중이에요. 데이터가 모일 때까지 "데이터 정리중"으로 보여요.');
-    else { state.syncOpen=true; renderSync(); toast('추천 종목을 추가하려면 저장소 동기화 토큰을 먼저 넣어 주세요.'); var b=$('sync-box'); if (b) b.scrollIntoView({block:'center'}); } }
+    if (ghEdit([{op:'add', code:el.dataset.add, group:el.dataset.g, name:nm}])){ toast(nm+' 추가 중이에요. 데이터가 모일 때까지 "데이터 정리중"으로 보여요.'); var ki=$('kr-s'); if (ki && ki.value){ ki.value=''; krSearch(''); } try { renderSectTop(); } catch(e){} }
+    else { state.syncOpen=true; renderSync(); toast('종목을 추가하려면 저장소 동기화 토큰을 먼저 넣어 주세요.'); var b=$('sync-box'); if (b) b.scrollIntoView({block:'center'}); } }
   else if (el.hasAttribute('data-sync-open')){ state.syncOpen=!state.syncOpen; renderSync(); }
   else if (el.hasAttribute('data-tok-save')){ saveToken(); }
   else if (el.hasAttribute('data-tok-del')){ try { localStorage.removeItem(TKEY); } catch(e){} state.syncOpen=false; applyLists(); toast('이 폰에서 토큰을 지웠어요. GitHub에서도 토큰을 삭제하면 완전히 무효가 돼요.'); }
@@ -1398,6 +1405,20 @@ function loadAll(){
 }
 if (!reduce) setInterval(function(){ var n=$('notice'); n.classList.add('out'); setTimeout(function(){ noteI=(noteI+1)%NOTES.length; n.textContent=NOTES[noteI]; n.classList.remove('out'); }, 380); }, 4200);
 loadAll(); setInterval(loadAll, 120000);
+
+/* ── 국내 종목 찾아 넣기 ── */
+var KRSYM=null;
+function krSearch(q){
+  var box=$('kr-res'); if (!box) return; q=(q||'').trim(); if (!q){ box.innerHTML=''; return; }
+  if (!KRSYM){ box.innerHTML='<li class="hint">종목 목록을 불러오는 중이에요.</li>'; getJSON('symbols_kr.json').then(function(j){ KRSYM=j.items||[]; krSearch($('kr-s').value); }).catch(function(){ box.innerHTML='<li class="hint">종목 목록을 아직 받지 못했어요. 잠시 뒤 다시 해 주세요.</li>'; }); return; }
+  var Q=q.toUpperCase().replace(/\s+/g,''), sc=function(r){ var n=r[1].toUpperCase().replace(/\s+/g,'');
+    return r[0]===Q?100 : n===Q?95 : n.indexOf(Q)===0?80 : r[0].indexOf(Q)===0?70 : n.indexOf(Q)>=0?50 : 0; };
+  var hits=KRSYM.map(function(r){ var v=sc(r); return [v ? v+Math.log(1+(r[3]||0))/Math.LN10*2-(r[1].length*0.05)-(/^(KODEX|TIGER|KBSTAR|ACE|SOL|RISE|HANARO|PLUS|KIWOOM)|우B?$/.test(r[1])?5:0) : 0, r]; }).filter(function(x){ return x[0]>0; }).sort(function(a,b){ return b[0]-a[0]; }).slice(0,8);
+  box.innerHTML = hits.length ? hits.map(function(x){ var r=x[1];
+    return '<li><div class="kn"><b>'+esc(r[1])+'</b><i>'+r[0]+' · '+(r[2]==='P'?'코스피':'코스닥')+'</i></div>'+(haveKr(r[0])?'<span class="hint">이미 있어요</span>':'<button class="btn sm" data-add="'+r[0]+'" data-g="watch" data-name="'+esc(r[1])+'">관심</button><button class="btn sm" data-add="'+r[0]+'" data-g="mine" data-name="'+esc(r[1])+'">내 종목</button>')+'</li>'; }).join('')
+    : '<li class="hint">찾는 종목이 없어요. 이름이나 6자리 코드로 찾아 주세요.</li>';
+}
+(function(){ var ki=$('kr-s'); if (ki) ki.addEventListener('input', function(){ clearTimeout(krSearch.t); var v=this.value; krSearch.t=setTimeout(function(){ krSearch(v); }, 200); }); })();
 
 })();
 </script>
