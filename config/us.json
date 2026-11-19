@@ -4,7 +4,8 @@
       "code": "NVDA",
       "ex": "NAS",
       "name": "엔비디아",
-      "group": "watch"
+      "group": "watch",
+      "mode": "trend"
     },
     {
       "code": "AAPL",
