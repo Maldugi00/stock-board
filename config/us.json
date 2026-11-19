@@ -16,7 +16,8 @@
       "code": "TSLA",
       "ex": "NAS",
       "name": "테슬라",
-      "group": "mine"
+      "group": "mine",
+      "mode": "trend"
     }
   ]
 }
