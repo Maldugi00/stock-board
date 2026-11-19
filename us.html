@@ -392,6 +392,16 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 .sub{margin:0 0 8px 10px;border-left:2px solid var(--line);padding-left:8px}
 .sr2{display:grid;grid-template-columns:minmax(0,1fr) 60px auto 34px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)} .sr2:last-child{border-bottom:0}
 .sr2 .un b{font-size:13.5px} .sr2 .uq b{font-size:13px}
+.rc{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.rh{display:grid;grid-template-columns:24px minmax(0,1fr) 60px auto;gap:8px;align-items:center}
+.g{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;font-size:12px;font-weight:700;color:#0b0e12}
+.gA{background:var(--up)} .gB{background:var(--amber)} .gC{background:var(--muted)}
+.rw{margin:6px 0 0;font-size:13px;line-height:1.5;color:#c3cad3} .rw b{color:var(--muted);font-weight:500;margin-right:4px}
+.rq{margin-top:8px} .rq td,.rq th{font-size:11.5px;padding:4px 3px}
+.ra{display:flex;gap:6px;justify-content:flex-end;margin-top:8px}
+.rt{font-size:14px;margin:12px 0 8px;color:var(--ink);font-weight:500}
+.trk th b{display:block;font-weight:500;color:var(--ink)} .trk th i,.trk td i{display:block;font-style:normal;font-size:11px;color:var(--muted)}
+.trk .tv td{font-size:12px;text-align:left;padding-top:0}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1b222c;color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13px;max-width:88vw;z-index:30}
 </style>
 </head>
@@ -399,7 +409,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 <div class="wrap">
   <header class="top">
     <h1 class="sr">주식 관제 보드 미국</h1>
-    <div class="toprow"><nav class="sw" aria-label="시장 전환"><a href="./">국내</a><a href="us.html" aria-current="page">미국</a></nav><div class="ver mono">v2.1.0</div></div>
+    <div class="toprow"><nav class="sw" aria-label="시장 전환"><a href="./">국내</a><a href="us.html" aria-current="page">미국</a></nav><div class="ver mono">v2.2.0</div></div>
     <div class="sess" id="sess"></div>
   </header>
 
@@ -430,6 +440,11 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
     <div class="panel"><ul class="ul" id="l-watch"></ul></div>
   </section>
 
+  <section aria-labelledby="h-rec">
+    <div class="sec-head"><h2 id="h-rec">미국 추천 종목</h2><span class="eyebrow">하루 한 번</span></div>
+    <div class="panel" id="rec"><p class="hint" style="margin:0">불러오는 중이에요.</p></div>
+  </section>
+
   <section aria-labelledby="h-det">
     <div class="sec-head"><h2 id="h-det">종목 판단</h2><span class="eyebrow">일봉 기준</span></div>
     <div class="panel" id="detail"></div>
@@ -447,7 +462,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 var DATA = (/^(localhost|127\.)/.test(location.hostname) ? 'data/' : 'https://raw.githubusercontent.com/Maldugi00/stock-board/data/') + 'us/';
 var TKEY='board_gh_token', PKEY='board_us_pending_v1';
 var MODES={def:{name:'방어형', p:KRT.P0, how:'손절선(3×ATR)에 닿거나 추세가 꺾이면(20일선 아래+MACD 음수) 팝니다'}, trend:{name:'추세형', p:KRT.P1, how:'손절선(3×ATR)에 닿을 때만 팝니다. 작은 눌림에는 팔지 않아요'}};
-var SECS=null, SECOPEN={}, LIST=null, MKT=null, MKTOK=null, FEE=0.0025, ALL=[], SEL=null, EDIT=false, SYMS=null, PENDING={}, OUTBOX=[], OUTT=null;
+var REC=null, RECG='A', SECS=null, SECOPEN={}, LIST=null, MKT=null, MKTOK=null, FEE=0.0025, ALL=[], SEL=null, EDIT=false, SYMS=null, PENDING={}, OUTBOX=[], OUTT=null;
 function $(id){ return document.getElementById(id); }
 function esc(t){ return String(t==null?'':t).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function getJSON(p){ return fetch(DATA+p+'?t='+Math.floor(Date.now()/60000), {cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error(p+' '+r.status); return r.json(); }); }
@@ -603,6 +618,36 @@ function renderSectors(){
   }).join('')+'</ul><p class="hint">섹터는 SPDR 섹터 ETF, 대표 종목은 섹터별 시가총액 상위 5개예요(30분마다 갱신). ＋를 누르면 관심 종목에 넣어요.</p>';
 }
 
+/* ── 화면: 추천 ── */
+var GTXT={A:'실적과 주가 추세가 함께 좋아지는 종목', B:'실적 개선이 시작됐지만 주가는 아직 옆걸음인 종목', C:'업종 흐름은 좋지만 실적 확인이 필요한 종목'};
+function recCard(y, have){
+  var mm=function(v){ return v==null?'–':'$'+(Math.abs(v)>=1000?(v/1000).toFixed(1)+'B':Math.round(v)+'M'); };
+  var n=y.q.length, idx=[n-4,n-3,n-2,n-1].filter(function(k){ return k>=0; });
+  var rr=idx.map(function(k){ return '<td>'+mm(y.rev[k])+'</td>'; }).join(''), ee=idx.map(function(k){ return '<td>'+(y.op[k]==null?'–':(y.op[k]<0?'-$':'$')+Math.abs(y.op[k]).toFixed(2))+'</td>'; }).join('');
+  return '<div class="rc"><div class="rh"><span class="g g'+y.grade+'">'+y.grade+'</span><div class="un"><b>'+esc(y.name)+'</b><i>'+esc(y.code)+' · '+esc(y.ind)+' · '+esc(y.idx)+'</i></div>'+spark(y.spark.slice(-60),60,24,colorOf(y.r20))+'<div class="uq"><b>'+usd(y.close)+'</b><i class="'+cls(y.r20)+'">20일 '+pcs(y.r20*100)+'</i></div></div>'+
+    '<p class="rw"><b>실적</b> '+esc(y.ewhy)+'</p><p class="rw"><b>주가</b> '+esc(y.pwhy)+(y.signals.length?' · '+esc(y.signals.join(' · ')):'')+'</p>'+
+    '<table class="sc rq"><thead><tr><th>분기</th>'+idx.map(function(k){ return '<th>'+esc(y.q[k])+'</th>'; }).join('')+'</tr></thead><tbody><tr><th>매출</th>'+rr+'</tr><tr><th>EPS</th>'+ee+'</tr></tbody></table>'+
+    '<div class="ra">'+(have[y.code]?'<span class="hint">이미 목록에 있어요</span>':'<button class="btn sm" data-radd="'+esc(y.code)+'" data-g="watch">관심에 추가</button><button class="btn sm" data-radd="'+esc(y.code)+'" data-g="mine">내 종목에 추가</button>')+'</div></div>';
+}
+function renderRec(){
+  var el=$('rec'); if (!REC){ el.innerHTML='<p class="hint" style="margin:0">추천 결과를 아직 만들지 않았어요. 미국장이 끝난 뒤 아침에 하루 한 번 만들어요.</p>'; return; }
+  var have={}; view().forEach(function(x){ have[x.code]=1; });
+  var items=REC.items.filter(function(y){ return !have[y.code] || PENDING[y.code]; }), C=REC.counts||{};
+  var picks=REC.picks.map(function(c){ return items.filter(function(y){ return y.code===c; })[0]; }).filter(Boolean);
+  var h='<p class="hint" style="margin:0 0 10px">'+(REC.asof?ymd(REC.asof).slice(5).replace('-','/')+' 종가 기준 · ':'')+'S&amp;P500·나스닥100 '+(C.universe||'')+'종목 중 A '+(C.A||0)+' · B '+(C.B||0)+' · C '+(C.C||0)+' · 과열 제외 '+(C.hot||0)+'</p>';
+  if (picks.length) h+='<h3 class="rt">오늘의 추천</h3>'+picks.map(function(y){ return recCard(y, have); }).join('');
+  h+='<div class="modes" role="group" aria-label="등급">'+['A','B','C'].map(function(g){ return '<button data-recg="'+g+'" aria-pressed="'+(RECG===g)+'">'+g+'등급 '+items.filter(function(y){ return y.grade===g; }).length+'</button>'; }).join('')+'</div><p class="hint" style="margin:0 0 8px">'+GTXT[RECG]+'</p>';
+  var list=items.filter(function(y){ return y.grade===RECG && picks.indexOf(y)<0; });
+  h+= list.length ? list.slice(0,12).map(function(y){ return recCard(y, have); }).join('') : '<p class="hint">이 등급에는 지금 종목이 없어요.</p>';
+  var tr=(REC.track||[]).filter(function(t){ return !t.closed; });
+  if (tr.length){
+    h+='<h3 class="rt">추천 종목 추적</h3><table class="sc trk"><tbody>'+tr.map(function(t){ var v={add:'t-buy',drop:'t-trim',watch:'t-wait'}[t.verdict]||'t-wait';
+      return '<tr><th><b>'+esc(t.name)+'</b><i>'+esc(t.code)+' · '+ymd(t.added).slice(5).replace('-','/')+' 추천 · '+t.days+'일째</i></th><td class="'+cls(t.ret)+'">'+pc(t.ret)+'<i>S&amp;P '+pc(t.mret)+'</i></td></tr><tr class="tv"><td colspan="2" class="'+v+'">'+esc(t.vtext)+'</td></tr>'; }).join('')+'</tbody></table>';
+  }
+  h+='<p class="hint">실적은 나스닥 공개 자료의 분기 매출·EPS(작년 같은 분기와 비교), 주가는 일봉 기준이에요. 금융 업종과 내 종목·관심 종목은 빼고 골라요. 추천은 매수 권유가 아니에요.</p>';
+  el.innerHTML=h;
+}
+
 /* ── 화면: 목록 ── */
 function rowHTML(s){
   if (s.pend) return '<li class="ur pend"><div class="un"><b>'+esc(s.name)+'</b><i>'+esc(s.code)+' · 데이터 정리중</i></div><span class="hint">1~3분</span></li>';
@@ -673,10 +718,12 @@ function search(qs){
     return '<li><div class="un"><b>'+esc(r[0])+' <span class="muted">'+(r[4]===3?'ETF':'')+'</span></b><i>'+esc(nm)+(r[2]?' · '+esc(r[3]):'')+'</i></div>'+(have[r[0]]?'<span class="hint">이미 있어요</span>':'<button class="btn sm" data-add="'+esc(r[0])+'" data-g="watch">관심</button><button class="btn sm" data-add="'+esc(r[0])+'" data-g="mine">내 종목</button>')+'</li>'; }).join('') : '<li class="hint">찾는 종목이 없어요. 티커(예: NVDA)나 이름(예: 엔비디아, apple)으로 찾아 주세요.</li>';
 }
 
-function render(){ applyPending(); renderLists(); renderDetail(); renderSectors(); }
+function render(){ applyPending(); renderLists(); renderDetail(); renderSectors(); renderRec(); }
 
 document.addEventListener('click', function(e){
   var b=e.target.closest('button'); if (!b) return;
+  if (b.dataset.recg){ RECG=b.dataset.recg; renderRec(); return; }
+  if (b.dataset.radd){ var y=REC.items.filter(function(x){ return x.code===b.dataset.radd; })[0]; if (y) edit({op:'add', code:y.code, ex:y.ex, name:y.name, group:b.dataset.g}); return; }
   if (b.dataset.sec){ SECOPEN[b.dataset.sec]=!SECOPEN[b.dataset.sec]; renderSectors(); return; }
   if (b.dataset.sadd){ edit({op:'add', code:b.dataset.sadd, ex:b.dataset.ex, name:b.dataset.nm, group:'watch'}); return; }
   if (b.dataset.sel){ SEL=b.dataset.sel; renderLists(); renderDetail(); $('h-det').scrollIntoView({behavior:'smooth', block:'start'}); return; }
@@ -694,8 +741,8 @@ $('s-in').addEventListener('input', function(){ clearTimeout(search.t); var v=th
 window.addEventListener('resize', function(){ clearTimeout(draw.t); draw.t=setTimeout(renderDetail, 200); });
 
 function loadAll(){
-  return Promise.all([getJSON('list.json'), getJSON('market.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getJSON('sectors.json').catch(function(){ return null; })]).then(function(r){
-    LIST=r[0]; MKT=r[1]; SECS=r[3]; FEE=LIST.fee||FEE;
+  return Promise.all([getJSON('list.json'), getJSON('market.json').catch(function(){ return null; }), getJSON('market_daily.json').catch(function(){ return null; }), getJSON('sectors.json').catch(function(){ return null; }), getJSON('screen/result.json').catch(function(){ return null; })]).then(function(r){
+    LIST=r[0]; MKT=r[1]; SECS=r[3]; REC=r[4]; FEE=LIST.fee||FEE;
     MKTOK = r[2]&&r[2].rows&&r[2].rows.length>80 ? KRT.marketOk(r[2].rows.map(function(x){ return [ymd(x[0]), x[1]]; })) : null;
     $('upd').textContent='한국 '+LIST.updated.slice(5).replace('-','/')+' 갱신';
     renderMarket();
