@@ -135,6 +135,37 @@ def symbols():
     return out
 
 
+def mini(k, ex, sym):
+    """섹터 화면용: 최근 일봉 한 번(100봉)으로 현재가·등락률·20일 수익률·60일 종가를 만든다."""
+    page = daily_page(k, ex, sym)
+    if not page or len(page) < 2:
+        return None
+    page.sort()
+    c = [r[4] for r in page]
+    return {"code": sym, "date": page[-1][0], "price": c[-1], "pct": round((c[-1] / c[-2] - 1) * 100, 2),
+            "r20": round((c[-1] / c[-21] - 1) * 100, 1) if len(c) > 20 else None, "spark": c[-60:]}
+
+
+def sectors(k, names):
+    cfg = json.load(open("config/us_sectors.json", encoding="utf-8"))
+    out = []
+    for sec in cfg["sectors"]:
+        e = mini(k, "AMS", sec["etf"])
+        if not e:
+            continue
+        e["name"] = sec["name"]
+        parts = []
+        for sym in sec["top"]:
+            ex, nm = names.get(sym, ("NYS", sym))
+            m = mini(k, ex, sym)
+            if m:
+                m["name"], m["ex"] = nm, ex
+                parts.append(m)
+        e["parts"] = parts
+        out.append(e)
+    return out
+
+
 def main():
     cfg = json.load(open(CONFIG, encoding="utf-8"))
     ny = ny_now()
@@ -189,8 +220,18 @@ def main():
     if C.EPOCH - old.get("ts", 0) >= 7 * 86400 or not old.get("items"):
         items = symbols()
         if items:
-            C.save("us/symbols.json", {"ts": C.EPOCH, "items": items})
+            old = {"ts": C.EPOCH, "items": items}
+            C.save("us/symbols.json", old)
             print("검색용 종목", len(items))
+
+    # 섹터: 30분마다 (ETF 11개 + 대표 종목 55개 = 일봉 66번)
+    sec = C.load("us/sectors.json", {})
+    if C.EPOCH - sec.get("ts", 0) >= 30 * 60 or os.environ.get("US_SECTORS") == "1":
+        names = {r[0]: (r[1], r[2] or r[3].title()[:20]) for r in old.get("items", [])}
+        got = sectors(k, names)
+        if len(got) >= 6:
+            C.save("us/sectors.json", {"updated": updated, "ts": C.EPOCH, "sectors": got})
+            print("섹터", len(got), "개,", sum(len(x["parts"]) for x in got), "종목")
 
     meta["calls"], meta["errors"] = k.calls, k.errors[:30]
     C.save("us/meta.json", meta)

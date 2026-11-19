@@ -1,0 +1,16 @@
+{
+  "_설명": "미국 섹터 = SPDR 섹터 ETF 11개, 섹터마다 시가총액이 큰 대표 종목 5개. 구성은 가끔 손으로 고친다.",
+  "sectors": [
+    {"etf": "XLK", "name": "기술", "top": ["NVDA", "AAPL", "MSFT", "AVGO", "ORCL"]},
+    {"etf": "XLC", "name": "커뮤니케이션", "top": ["META", "GOOGL", "NFLX", "TMUS", "DIS"]},
+    {"etf": "XLY", "name": "경기소비재", "top": ["AMZN", "TSLA", "HD", "MCD", "BKNG"]},
+    {"etf": "XLF", "name": "금융", "top": ["BRK/B", "JPM", "V", "MA", "BAC"]},
+    {"etf": "XLV", "name": "헬스케어", "top": ["LLY", "JNJ", "ABBV", "UNH", "MRK"]},
+    {"etf": "XLI", "name": "산업재", "top": ["GE", "CAT", "RTX", "UBER", "BA"]},
+    {"etf": "XLP", "name": "필수소비재", "top": ["WMT", "COST", "PG", "KO", "PM"]},
+    {"etf": "XLE", "name": "에너지", "top": ["XOM", "CVX", "COP", "WMB", "EOG"]},
+    {"etf": "XLU", "name": "유틸리티", "top": ["NEE", "SO", "CEG", "DUK", "VST"]},
+    {"etf": "XLRE", "name": "부동산", "top": ["PLD", "AMT", "WELL", "EQIX", "SPG"]},
+    {"etf": "XLB", "name": "소재", "top": ["LIN", "SHW", "NEM", "ECL", "FCX"]}
+  ]
+}
