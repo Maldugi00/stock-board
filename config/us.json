@@ -19,6 +19,12 @@
       "name": "테슬라",
       "group": "mine",
       "mode": "trend"
+    },
+    {
+      "code": "GOOGL",
+      "ex": "NAS",
+      "name": "알파벳 A",
+      "group": "watch"
     }
   ]
 }
