@@ -7,6 +7,7 @@
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -466,6 +467,26 @@ def stale(ts, key, seconds):
     return EPOCH - ts.get(key, 0) >= seconds
 
 
+def symbols_kr():
+    """검색용 국내 종목 목록(코스피·코스닥, ETF 포함, 스팩 제외) — 주 1회. [코드, 이름, 시장(P/Q)]"""
+    old = load("symbols_kr.json", {})
+    if EPOCH - old.get("ts", 0) < 7 * 86400 and old.get("items"):
+        return
+    try:
+        import screen                               # 전체 종목 파일 읽기는 스크리닝 코드를 그대로 쓴다
+        items = []
+        for mkt in ("kospi", "kosdaq"):
+            for r in screen.master(mkt):
+                if r["spac"] or not re.match(r"^[0-9A-Z]{6}$", r["code"]):
+                    continue
+                items.append([r["code"], r["name"], "P" if mkt == "kospi" else "Q"])
+        if len(items) > 2000:
+            save("symbols_kr.json", {"ts": EPOCH, "items": items})
+            print("검색용 국내 종목", len(items))
+    except Exception as e:
+        print("검색용 국내 종목 실패", type(e).__name__, str(e)[:120])
+
+
 def main():
     cfg = json.load(open(CONFIG, encoding="utf-8"))
     meta = {"updated": NOW.strftime("%Y-%m-%d %H:%M"), "env": None, "calls": 0, "errors": []}
@@ -608,6 +629,7 @@ def main():
 
     meta["calls"] = k.calls
     meta["errors"] = k.errors[:30]
+    symbols_kr()
     save("meta.json", meta)
     print(f"호출 {k.calls}회, 오류 {len(k.errors)}건")
     for e in k.errors[:30]:
