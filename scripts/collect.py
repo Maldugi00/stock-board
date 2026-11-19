@@ -468,9 +468,9 @@ def stale(ts, key, seconds):
 
 
 def symbols_kr():
-    """검색용 국내 종목 목록(코스피·코스닥, ETF 포함, 스팩 제외) — 주 1회. [코드, 이름, 시장(P/Q)]"""
+    """검색용 국내 종목 목록(코스피·코스닥, ETF 포함, 스팩 제외) — 주 1회. [코드, 이름, 시장(P/Q), 시가총액(억)]"""
     old = load("symbols_kr.json", {})
-    if EPOCH - old.get("ts", 0) < 7 * 86400 and old.get("items"):
+    if EPOCH - old.get("ts", 0) < 7 * 86400 and old.get("items") and len(old["items"][0]) >= 4:
         return
     try:
         import screen                               # 전체 종목 파일 읽기는 스크리닝 코드를 그대로 쓴다
@@ -479,7 +479,7 @@ def symbols_kr():
             for r in screen.master(mkt):
                 if r["spac"] or not re.match(r"^[0-9A-Z]{6}$", r["code"]):
                     continue
-                items.append([r["code"], r["name"], "P" if mkt == "kospi" else "Q"])
+                items.append([r["code"], r["name"], "P" if mkt == "kospi" else "Q", r["cap"] or 0])
         if len(items) > 2000:
             save("symbols_kr.json", {"ts": EPOCH, "items": items})
             print("검색용 국내 종목", len(items))
