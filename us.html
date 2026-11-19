@@ -395,7 +395,7 @@ footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);paddin
 <div class="wrap">
   <header class="top">
     <h1 class="sr">주식 관제 보드 미국</h1>
-    <div class="toprow"><nav class="sw" aria-label="시장 전환"><a href="./">국내</a><a href="us.html" aria-current="page">미국</a></nav><div class="ver mono">v2.0.0</div></div>
+    <div class="toprow"><nav class="sw" aria-label="시장 전환"><a href="./">국내</a><a href="us.html" aria-current="page">미국</a></nav><div class="ver mono">v2.0.1</div></div>
     <div class="sess" id="sess"></div>
   </header>
 
@@ -507,10 +507,11 @@ function applyPending(){
   Object.keys(PENDING).forEach(function(code){
     var p=PENDING[code], s=by[code];
     if (Date.now()-p.at > 40*60000){ delete PENDING[code]; return; }
-    if (p.op==='remove'){ if (!s) delete PENDING[code]; return; }
-    if (p.op==='add'){ if (s && s.d && s.d.daily && s.d.daily.length && (!p.group || s.group===p.group)) delete PENDING[code]; return; }
-    if (p.op==='group'){ if (s && s.group===p.group) delete PENDING[code]; return; }
-    if (p.op==='mode'){ if (s && s.mode===p.mode) delete PENDING[code]; }
+    if (p.remove){ if (!s) delete PENDING[code]; return; }
+    if (p.add && s && s.d && s.d.daily && s.d.daily.length) delete p.add;          // 이동·방식·추가를 따로 확인한다(하나가 다른 것을 덮지 않게)
+    if (p.group && s && s.group===p.group) delete p.group;
+    if (p.mode && s && s.mode===p.mode) delete p.mode;
+    if (!p.add && !p.group && !p.mode) delete PENDING[code];
   });
   savePending();
 }
@@ -518,20 +519,27 @@ function view(){
   var out=[], seen={};
   ALL.forEach(function(s){
     var p=PENDING[s.code]; seen[s.code]=1;
-    if (p && p.op==='remove') return;
+    if (p && p.remove) return;
     var v=Object.create(s);
-    if (p && (p.op==='group'||p.op==='add') && p.group) v.group=p.group;
-    if (p && p.op==='mode' && p.mode!==s.mode){ v.mode=p.mode; judge(v); }
+    if (p && p.group) v.group=p.group;
+    if (p && p.mode && p.mode!==s.mode){ v.mode=p.mode; judge(v); }
     out.push(v);
   });
-  Object.keys(PENDING).forEach(function(code){ var p=PENDING[code]; if (p.op==='add' && !seen[code]) out.push({code:code, ex:p.ex, name:p.name||code, group:p.group||'watch', pend:true}); });
+  Object.keys(PENDING).forEach(function(code){ var p=PENDING[code]; if (p.add && !seen[code]) out.push({code:code, ex:p.ex, name:p.name||code, group:p.group||'watch', pend:true}); });
   return out;
 }
 function edit(o){
   var t=token();
   if (!t){ toast('편집하려면 국내 화면에서 폰 토큰을 먼저 저장해 주세요. 같은 토큰을 씁니다.'); return; }
   if (navigator.onLine===false){ toast('오프라인이라 저장하지 못했어요.'); return; }
-  o.m='us'; PENDING[o.code]={op:o.op, group:o.group, mode:o.mode, name:o.name, ex:o.ex, at:Date.now()}; savePending(); render();
+  o.m='us';
+  var p = (o.op==='remove' || o.op==='add') ? {} : (PENDING[o.code] || {});
+  delete p.remove;
+  if (o.op==='remove') p.remove=true;
+  else if (o.op==='add'){ p.add=true; p.group=o.group; p.name=o.name; p.ex=o.ex; }
+  else if (o.op==='group') p.group=o.group;
+  else if (o.op==='mode') p.mode=o.mode;
+  p.at=Date.now(); PENDING[o.code]=p; savePending(); render();
   OUTBOX.push(o); clearTimeout(OUTT); OUTT=setTimeout(flush, 1500);
 }
 function flush(){
