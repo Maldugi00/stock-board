@@ -1,0 +1,42 @@
+name: 미국 추천 종목 스크리닝
+
+# cron-job.org 가 미국장이 끝난 뒤(한국 시각 화~토 07:10) 부른다. 수집과 같은 줄(collect)에 서서 겹치지 않는다.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: 지난 데이터 불러오기
+        run: |
+          mkdir -p data
+          if git fetch --depth 1 origin data 2>/dev/null; then
+            git archive FETCH_HEAD | tar -x -C data
+          fi
+      - name: 미국 스크리닝
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          DATA_DIR: data
+        run: python3 -u scripts/screen_us.py
+      - name: 데이터 가지에 저장
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd data
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "미국 추천 갱신 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
