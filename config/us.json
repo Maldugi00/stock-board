@@ -37,6 +37,12 @@
       "ex": "NAS",
       "name": "코스트코 홀세일",
       "group": "watch"
+    },
+    {
+      "code": "EVRG",
+      "ex": "NAS",
+      "name": "에버지",
+      "group": "watch"
     }
   ]
 }
