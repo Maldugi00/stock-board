@@ -31,6 +31,12 @@
       "ex": "NAS",
       "name": "넷플릭스",
       "group": "watch"
+    },
+    {
+      "code": "COST",
+      "ex": "NAS",
+      "name": "코스트코 홀세일",
+      "group": "watch"
     }
   ]
 }
