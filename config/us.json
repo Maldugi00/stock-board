@@ -25,6 +25,12 @@
       "ex": "NAS",
       "name": "알파벳 A",
       "group": "watch"
+    },
+    {
+      "code": "NFLX",
+      "ex": "NAS",
+      "name": "넷플릭스",
+      "group": "watch"
     }
   ]
 }
