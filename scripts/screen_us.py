@@ -2,8 +2,8 @@
 """미국 추천 종목 스크리닝 (S&P500 + 나스닥100).
 
 1) 대상: 위키백과의 S&P500·나스닥100 구성표(주 1회 갱신, 실패하면 지난 목록)
-2) 실적: 미국 SEC XBRL frames(분기 하나에 전체 회사) → 분기 매출·영업이익(없으면 순이익)
-   4분기 = 연간 − 1~3분기. 판정 규칙은 국내(screen.judge)와 같다.
+2) 실적: 나스닥 공개 자료의 분기 매출·EPS(최근 3개 회계연도). SEC 는 GitHub 서버 접속을 막는다.
+   판정 규칙은 국내(screen.judge)와 같고, 영업이익 자리에 EPS 를 넣는다.
 3) 주가: 한국투자증권 해외주식 일봉(받아 둔 것은 최근 구간만 이어 받음). 판정·점수는 국내와 같다.
 4) 등급 A/B/C, 과열 제외, 금융 업종·내 종목·관심 종목 제외. 추천 종목은 날마다 추적한다.
 
@@ -24,7 +24,7 @@ import screen as S           # noqa: E402
 
 UA = "stock-board personal dashboard Maldugi00@users.noreply.github.com"
 PX = "state/us_screen_px.json"
-UNIV = "state/us_universe.json"
+UNIV = "state/us_universe2.json"
 FINANCE = ("Financials", "Financial")
 
 
@@ -104,19 +104,15 @@ def universe(names):
             if len(r) > gi:
                 items[r[si].replace(".", "/")] = {"sector": r[gi], "idx": "S&P500"}
     n_sp = len(items)
-    rows = wiki_table("Nasdaq-100", ("Ticker",))
-    if rows:
-        h = rows[0]; ti = next(i for i, x in enumerate(h) if "Ticker" in x)
-        gi = next((i for i, x in enumerate(h) if "Sector" in x), None)
-        if gi is None:
-            gi = next((i for i, x in enumerate(h) if "Industry" in x), len(h) - 1)
-        for r in rows[1:]:
-            if len(r) > max(ti, gi):
-                t = r[ti].replace(".", "/")
-                if t in items:
-                    items[t]["idx"] = "S&P500·나스닥100"
-                else:
-                    items[t] = {"sector": r[gi], "idx": "나스닥100"}
+    js = nasdaq("quote/list-type/nasdaq100")
+    for r in (((js or {}).get("data") or {}).get("data") or {}).get("rows") or []:
+        t = r.get("symbol", "").replace(".", "/")
+        if not t:
+            continue
+        if t in items:
+            items[t]["idx"] = "S&P500·나스닥100"
+        else:
+            items[t] = {"sector": "기타(나스닥100)", "idx": "나스닥100"}
     print(f"대상 종목: S&P500 {n_sp}개 + 나스닥100 → 합계 {len(items)}개", flush=True)
     if len(items) < 400:
         print("구성표를 제대로 못 받아 지난 목록을 씁니다.")
@@ -129,80 +125,89 @@ def universe(names):
     return items
 
 
-# ───────────────────────── 실적 (SEC) ─────────────────────────
-REV = ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet")
-OPS = ("OperatingIncomeLoss",)
-NI = ("NetIncomeLoss",)
+# ───────────────────────── 실적 (나스닥 공개 자료) ─────────────────────────
+# SEC 는 GitHub 서버 접속을 막아서, 나스닥 사이트의 '매출·EPS' 표(최근 3개 회계연도 분기)를 쓴다.
+NH = {"User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36",
+      "Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9",
+      "Origin": "https://www.nasdaq.com", "Referer": "https://www.nasdaq.com/"}
+FIN = "state/us_fin.json"
 
 
-def periods():
-    """최근 11개 분기 (연, 분기) 과 연간 2개."""
-    y, m = c.NOW.year, c.NOW.month
-    q = (m - 1) // 3            # 지금 분기 바로 앞 분기까지 (11월 → 3분기)
-    if q == 0:
-        y, q = y - 1, 4
-    out = []
-    for _ in range(11):
-        out.append((y, q))
-        q -= 1
-        if q == 0:
-            y, q = y - 1, 4
-    return sorted(out)
+def nasdaq(path):
+    for i in range(3):
+        try:
+            req = urllib.request.Request("https://api.nasdaq.com/api/" + path, headers=NH)
+            return json.loads(urllib.request.urlopen(req, timeout=30).read())
+        except Exception:
+            time.sleep(2 * (i + 1))
+    return None
 
 
-def frame(concept, period):
-    raw = http(f"https://data.sec.gov/api/xbrl/frames/us-gaap/{concept}/USD/{period}.json", timeout=90)
-    time.sleep(0.15)
-    if not raw:
-        return {}
-    try:
-        return {d["cik"]: d["val"] for d in json.loads(raw).get("data", [])}
-    except Exception:
-        return {}
+def money(t):
+    m = re.search(r"\$?(-?\(?[\d,]+\.?\d*\)?)", t or "")
+    if not m:
+        return None
+    v = m.group(1).replace(",", "")
+    neg = v.startswith("(") or v.startswith("-")
+    v = float(v.strip("()-"))
+    return -v if neg else v
 
 
-def financials(ciks):
-    """→ {cik: [(라벨, 매출, 이익), ...]}  (이익 = 영업이익, 없으면 순이익)"""
-    qs = periods()
-    years = sorted({y for y, q in qs if q == 4})
-    want = set(ciks.values())
-    data = {}                    # (kind, (y,q) 또는 (y,0)) → {cik: val}
-    t0 = time.time()
-    for kind, concepts in (("rev", REV), ("op", OPS), ("ni", NI)):
-        for per in [(y, q) for y, q in qs] + [(y, 0) for y in years]:
-            name = f"CY{per[0]}" + (f"Q{per[1]}" if per[1] else "")
-            merged = {}
-            for cpt in concepts:
-                for k, v in frame(cpt, name).items():
-                    if k in want and k not in merged:
-                        merged[k] = v
-            data[(kind, per)] = merged
-    print(f"SEC 실적 받기 {time.time() - t0:.0f}초", flush=True)
-    out = {}
-    for cik in want:
-        rows = []
-        for y, q in qs:
-            vals = {}
-            for kind in ("rev", "op", "ni"):
-                v = data[(kind, (y, q))].get(cik)
-                if v is None and q == 4:
-                    a = data[(kind, (y, 0))].get(cik)
-                    parts = [data[(kind, (y, p))].get(cik) for p in (1, 2, 3)]
-                    if a is not None and all(p is not None for p in parts):
-                        v = a - sum(parts)
-                vals[kind] = v
-            rows.append((f"{y % 100}.{q}Q", vals["rev"], vals["op"], vals["ni"]))
-        # 영업이익이 6분기 넘게 있으면 영업이익, 아니면 순이익
-        use = "op" if sum(1 for r in rows if r[2] is not None) >= 6 else "ni"
-        qs2 = [(lab, rev, (op if use == "op" else ni)) for lab, rev, op, ni in rows]
-        # 끝에서부터 빈칸 없이 이어지는 구간만 쓴다
-        tail = []
-        for r in reversed(qs2):
-            if r[1] is None or r[2] is None:
+def quarters_of(sym):
+    """→ [(라벨, 매출(백만달러), EPS, 날짜)] 오래된 순, 빈칸 없이 이어진 구간만"""
+    js = nasdaq(f"company/{sym.replace('/', '.')}/revenue?limit=1")
+    tab = ((js or {}).get("data") or {}).get("revenueTable") or {}
+    rows, cols = tab.get("rows") or [], [k for k in ("value2", "value3", "value4")]
+    out, rev = [], {}
+    for r in rows:
+        lab = r.get("value1", "")
+        if lab == "Totals":
+            break
+        if lab == "Revenue":
+            rev = {k: money(r.get(k)) for k in cols}
+        elif lab == "EPS":
+            for k in cols:
+                m = re.search(r"\((\d\d)/(\d\d)/(\d{4})\)", r.get(k) or "")
+                e = money((r.get(k) or "").split("(")[0])
+                if m and e is not None and rev.get(k) is not None:
+                    d = int(m.group(3) + m.group(1) + m.group(2))
+                    out.append((d, rev[k], e))
+    out.sort()
+    tail = []
+    for row in reversed(out):                       # 분기 간격(약 3개월)이 끊기지 않은 최근 구간
+        if tail:
+            gap = (U.datetime.strptime(str(tail[-1][0]), "%Y%m%d") - U.datetime.strptime(str(row[0]), "%Y%m%d")).days
+            if not 70 <= gap <= 110:
                 break
-            tail.append(r)
-        out[cik] = (list(reversed(tail)), use)
-    return out
+        tail.append(row)
+    res = []
+    for d, rv, e in reversed(tail):
+        y, mth = d // 10000, d // 100 % 100
+        res.append((f"{y % 100}.{(mth - 1) // 3 + 1}Q", rv, e, d))
+    return res
+
+
+def financials(uni, budget_end):
+    """3일마다 다시 받는다 (실적은 분기마다 바뀜). → {티커: [(라벨, 매출, EPS)]}"""
+    cache = c.load(FIN, {})
+    n = 0
+    for t in uni:
+        ent = cache.get(t) or {}
+        if c.EPOCH - ent.get("ts", 0) < 3 * 86400 and ent.get("q"):
+            continue
+        if time.time() > budget_end:
+            print("시간 제한으로 실적 받기를 멈춥니다.", flush=True)
+            break
+        q = quarters_of(t)
+        time.sleep(0.25)
+        n += 1
+        if q:
+            cache[t] = {"ts": c.EPOCH, "q": [list(x) for x in q]}
+        elif ent:
+            ent["ts"] = c.EPOCH - 2 * 86400              # 실패하면 하루 뒤 다시
+    c.save(FIN, {t: v for t, v in cache.items() if t in uni})
+    print(f"실적 새로 받음 {n}개", flush=True)
+    return {t: [(x[0], x[1], x[2]) for x in v["q"]] for t, v in cache.items() if t in uni}
 
 
 # ───────────────────────── 주가 ─────────────────────────
@@ -365,21 +370,17 @@ def main():
     exclude = {s["code"] for s in cfg.get("stocks", [])}
 
     # 실적
-    tick = json.loads(http("https://www.sec.gov/files/company_tickers.json") or b"{}")
-    cik_of = {v["ticker"].replace("-", "/").replace(".", "/"): v["cik_str"] for v in tick.values()}
-    ciks = {t: cik_of[t] for t in uni if t in cik_of}
-    print(f"SEC 회사번호 찾음 {len(ciks)}/{len(uni)}", flush=True)
-    fin = financials(ciks) if ciks else {}
+    fin = financials(uni, t0 + 12 * 60)
 
     items = []
     for t, x in uni.items():
-        qs, basis = fin.get(ciks.get(t), ([], "op"))
+        qs, basis = fin.get(t, []), "eps"
         cls, why, score, det = S.judge(qs)
-        if basis == "ni" and cls != "nodata":
-            why = why.replace("영업이익", "순이익")
+        if cls != "nodata":
+            why = why.replace("영업이익", "EPS").replace("흑자전환", "EPS 흑자전환").replace("적자전환", "EPS 적자전환").replace("이익률", "매출 대비 EPS")
         items.append({"code": t, "name": x["name"], "ex": x["ex"], "sector": x["sector"], "idx": x["idx"], "cls": cls, "why": why,
                       "score": score, "basis": basis, "q": [q[0] for q in qs][-8:],
-                      "rev": [round(q[1] / 1e6) for q in qs][-8:], "op": [round(q[2] / 1e6) for q in qs][-8:]})
+                      "rev": [round(q[1]) for q in qs][-8:], "op": [q[2] for q in qs][-8:]})
     cnt = {}
     for x in items:
         cnt[x["cls"]] = cnt.get(x["cls"], 0) + 1
