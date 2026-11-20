@@ -67,6 +67,12 @@
       "name": "삼성E&A",
       "type": "stock",
       "group": "watch"
+    },
+    {
+      "code": "068270",
+      "name": "셀트리온",
+      "type": "stock",
+      "group": "watch"
     }
   ],
   "sector_market": {
