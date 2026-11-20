@@ -61,6 +61,12 @@
       "name": "동국제약",
       "type": "stock",
       "group": "watch"
+    },
+    {
+      "code": "028050",
+      "name": "삼성E&A",
+      "type": "stock",
+      "group": "watch"
     }
   ],
   "sector_market": {
