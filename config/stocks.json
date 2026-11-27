@@ -67,7 +67,8 @@
       "code": "028050",
       "name": "삼성E&A",
       "type": "stock",
-      "group": "watch"
+      "group": "watch",
+      "mode": "trend"
     },
     {
       "code": "068270",
